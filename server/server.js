@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
+const webPush = require('web-push');
 const cors = require('cors');
 const http = require('http');
 const path = require('path');
@@ -16,10 +17,20 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors());
 
+// === 🛑 NAYA WEB PUSH SETUP (VAPID Keys Configuration) ===
+webPush.setVapidDetails(
+  process.env.VAPID_MAILTO,
+  process.env.VAPID_PUBLIC_KEY,
+  process.env.VAPID_PRIVATE_KEY
+);
+
+// Frontend ko Public Key dene ke liye API endpoint
+app.get('/api/vapid-public-key', (req, res) => {
+  res.send(process.env.VAPID_PUBLIC_KEY);
+});
+// =========================================================
+
 // === CLOUDINARY SETUP (web deployment ke liye) ===
-// Electron desktop wale local uploads/ folder approach ki jagah ab files
-// Cloudinary (cloud storage) par jaati hain — web hosting (Render) par disk
-// storage persistent nahi hota (restart pe delete ho jaata), isliye ye zaroori hai.
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
@@ -35,13 +46,11 @@ mongoose.connect(process.env.MONGO_URI)
   .catch((err) => console.log("❌ Database Connection Failed:", err.message));
 
 // === SCHEMAS ===
-// NOTE: Ab yehi single source of truth hai. models/User.js aur models/Post.js
-// (jo pehle unused/mismatched the) ab isi file ke schema se replace ho gaye hain.
 const UserSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     email: { type: String, required: true, unique: true },
     mobile: { type: String, unique: true, sparse: true },
-    password: { type: String, required: true }, // ab hashed store hoga
+    password: { type: String, required: true },
     profilePic: { type: String, default: "" },
     bio: { type: String, default: "Hey there! I am using Campus Connect." },
     department: { type: String, default: "" },
@@ -54,6 +63,64 @@ const UserSchema = new mongoose.Schema({
     }
 });
 const User = mongoose.model('User', UserSchema);
+
+// === 🛑 NAYA SUBSCRIBER SCHEMA (Push Notifications ke liye) ===
+const subscriberSchema = new mongoose.Schema({
+  endpoint: { type: String, required: true, unique: true },
+  expirationTime: { type: Date, default: null },
+  keys: {
+    p256dh: String,
+    auth: String
+  }
+});
+const Subscriber = mongoose.model('Subscriber', subscriberSchema);
+// ===============================================================
+
+
+// === 🛑 NAYA SUBSCRIBE ROUTE & NOTICE HELPER FUNCTION ===
+// Iske thik niche se tere baaki ke routes shuru honge
+
+// Frontend se push subscription save karne ka route
+app.post('/api/subscribe', async (req, res) => {
+  try {
+    await Subscriber.findOneAndUpdate(
+      { endpoint: req.body.endpoint },
+      req.body,
+      { upsert: true, new: true }
+    );
+    res.status(200).json({ success: true, message: "Subscription Saved!" });
+  } catch (error) {
+    console.error("Subscription Error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// Admin/System se sabko notice bhejne ka helper function
+async function sendNoticeToAll(title, message, url) {
+  const allSubscribers = await Subscriber.find({});
+  const payload = JSON.stringify({
+    title: title,
+    body: message,
+    icon: "/icons/icon-192.png",
+    data: { url: url || "https://campus-connect.vercel.app" }
+  });
+
+  allSubscribers.forEach(async (sub) => {
+    try {
+      await webPush.sendNotification(sub, payload);
+      console.log("Push notice sent successfully!");
+    } catch (error) {
+      if (error.statusCode === 410 || error.statusCode === 404) {
+        await Subscriber.deleteOne({ _id: sub._id });
+        console.log("Inactive subscriber removed from DB.");
+      }
+    }
+  });
+}
+// ===============================================================
+
+// 👇 YAHAN SE NICHE TERE PEHLE WALE BAAKI KE ROUTES AUR CODE AYENGE
+// (jaise app.post('/login', ...), app.get('/posts', ...), server.listen(...) wgairah)
 
 const Post = mongoose.model('Post', new mongoose.Schema({
     username: String,
