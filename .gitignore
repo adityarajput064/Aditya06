@@ -1,0 +1,9 @@
+node_modules
+dist
+release
+.env
+server/.env
+server/uploads
+*.log
+.DS_Store
+.vscode

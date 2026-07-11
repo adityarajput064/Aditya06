@@ -1,0 +1,267 @@
+/* ============================================
+   CAMPUS CONNECT — Neon Theme (Phase 1)
+   Is file ko src/main.jsx mein import karo:
+   import "./theme.css";
+   ============================================ */
+
+:root,
+[data-theme="dark"] {
+  --accent-1: #00E5FF;   /* neon cyan */
+  --accent-2: #0099FF;   /* electric blue */
+  --accent-3: #7B61FF;   /* violet */
+  --bg-base: #121212;
+  --surface-1: #111111;
+  --surface-2: rgba(255, 255, 255, 0.06);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --text-main: #ffffff;
+  --text-muted: #9ca3af;
+}
+
+[data-theme="light"] {
+  --accent-1: #0099FF;
+  --accent-2: #7B61FF;
+  --accent-3: #00E5FF;
+  --bg-base: #f4f6fb;
+  --surface-1: #ffffff;
+  --surface-2: rgba(0, 0, 0, 0.04);
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --text-main: #10121a;
+  --text-muted: #6b7280;
+}
+
+body {
+  background: var(--bg-base);
+  color: var(--text-main);
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+/* ===== Navbar / glass panels ===== */
+.navbar-glass {
+  background: color-mix(in srgb, var(--surface-1) 70%, transparent);
+  backdrop-filter: blur(16px);
+}
+
+.glass {
+  background: color-mix(in srgb, var(--surface-1) 65%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+}
+
+/* ===== Floating gradient blobs ===== */
+.gradient-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(60px);
+  opacity: 0.25;
+  animation: drift 18s ease-in-out infinite;
+}
+.gradient-blob-1 {
+  width: 380px; height: 380px;
+  top: -10%; left: -5%;
+  background: radial-gradient(circle, var(--accent-1), transparent 70%);
+  animation-duration: 20s;
+}
+.gradient-blob-2 {
+  width: 420px; height: 420px;
+  bottom: -15%; right: -10%;
+  background: radial-gradient(circle, var(--accent-3), transparent 70%);
+  animation-duration: 26s;
+  animation-delay: -6s;
+}
+.gradient-blob-3 {
+  width: 300px; height: 300px;
+  top: 40%; left: 50%;
+  background: radial-gradient(circle, var(--accent-2), transparent 70%);
+  animation-duration: 22s;
+  animation-delay: -12s;
+}
+
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(40px, -30px) scale(1.1); }
+  66% { transform: translate(-30px, 30px) scale(0.95); }
+}
+
+/* ===== Floating particles ===== */
+.particle {
+  position: absolute;
+  bottom: -10px;
+  border-radius: 9999px;
+  background: var(--accent-1);
+  box-shadow: 0 0 8px var(--accent-1);
+  opacity: 0;
+  animation-name: floatUp;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes floatUp {
+  0% { transform: translateY(0); opacity: 0; }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.4; }
+  100% { transform: translateY(-100vh); opacity: 0; }
+}
+
+/* ===== Mouse glow ===== */
+.mouse-glow {
+  position: fixed;
+  top: 0; left: 0;
+  width: 500px;
+  height: 500px;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent-1) 15%, transparent), transparent 70%);
+  transform: translate(calc(var(--mx, 50vw) - 250px), calc(var(--my, 50vh) - 250px));
+  transition: transform 0.15s ease-out;
+}
+
+/* ===== Glow / tilt cards ===== */
+.glow-card {
+  position: relative;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: 1rem;
+  overflow: hidden;
+  transition: transform 0.15s ease-out, box-shadow 0.3s ease;
+  will-change: transform;
+}
+.glow-card:hover {
+  box-shadow: 0 10px 40px -10px color-mix(in srgb, var(--accent-1) 35%, transparent);
+  border-color: color-mix(in srgb, var(--accent-1) 40%, var(--border-subtle));
+}
+.glow-card-shine {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(280px circle at var(--glow-x, 50%) var(--glow-y, 50%), color-mix(in srgb, var(--accent-1) 18%, transparent), transparent 65%);
+  transition: opacity 0.25s ease;
+}
+.glow-card:hover .glow-card-shine {
+  opacity: 1;
+}
+
+/* Gradient border variant — use alongside glow-card for extra emphasis */
+.gradient-border {
+  position: relative;
+  border-radius: 1rem;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--accent-1), var(--accent-3));
+}
+.gradient-border > * {
+  border-radius: calc(1rem - 1px);
+}
+
+/* ===== Skeleton loading shimmer ===== */
+.skeleton-shimmer {
+  position: relative;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.skeleton-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent-1) 12%, transparent), transparent);
+  animation: shimmer 1.6s infinite;
+}
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Respect reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .gradient-blob, .particle, .skeleton-shimmer::after {
+    animation: none !important;
+  }
+}
+
+/* ============================================
+   PWA / Mobile-app-feel additions
+   ============================================ */
+
+/* ===== Safe area (notched phones, installed PWA) ===== */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.safe-x {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Apply once, globally, so installed/fullscreen mode never clips content */
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ===== Smooth scrolling everywhere ===== */
+html {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ===== Ripple click effect ===== */
+.ripple {
+  position: relative;
+  overflow: hidden;
+}
+.ripple::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent-1) 35%, transparent);
+  width: 0;
+  height: 0;
+  left: var(--ripple-x, 50%);
+  top: var(--ripple-y, 50%);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+}
+.ripple:active::after {
+  width: 260px;
+  height: 260px;
+  opacity: 1;
+  transition: width 0.4s ease-out, height 0.4s ease-out, opacity 0.6s ease-out;
+}
+
+/* ===== Page transition ===== */
+.page-enter {
+  animation: pageFadeIn 0.22s ease both;
+}
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== Touch-friendly minimum tap target ===== */
+@media (pointer: coarse) {
+  button, a, input, select {
+    min-height: 40px;
+  }
+}
+
+/* ===== High-contrast support ===== */
+@media (prefers-contrast: more) {
+  :root, [data-theme="dark"] {
+    --border-subtle: rgba(255, 255, 255, 0.25);
+    --text-muted: #cbd5e1;
+  }
+  [data-theme="light"] {
+    --border-subtle: rgba(0, 0, 0, 0.25);
+    --text-muted: #374151;
+  }
+}
+
+/* ===== Reduced motion already handled for existing animations;
+   extend to the additions above ===== */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .page-enter { animation: none; }
+  .ripple::after { transition: none !important; }
+}

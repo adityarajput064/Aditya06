@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+
+    <!-- PWA -->
+    <link rel="manifest" href="./manifest.json" />
+    <meta name="theme-color" content="#00E5FF" />
+    <meta name="background-color" content="#121212" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Campus Connect" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png" />
+
+    <!-- SEO -->
+    <title>Campus Connect — Your campus, connected</title>
+    <meta name="description" content="Campus Connect brings your college feed, notes, groups, events, and notices into one app." />
+    <link rel="canonical" href="https://campusconnect.app/" />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Campus Connect — Your campus, connected" />
+    <meta property="og:description" content="Campus feed, notes, groups, events, and notices — all in one app." />
+    <meta property="og:image" content="/icons/icon-512.png" />
+    <meta property="og:url" content="https://campusconnect.app/" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Campus Connect — Your campus, connected" />
+    <meta name="twitter:description" content="Campus feed, notes, groups, events, and notices — all in one app." />
+    <meta name="twitter:image" content="/icons/icon-512.png" />
+
+    <!--
+      Compiled Tailwind (tailwind.config.js + postcss) already handles styling
+      for this project, so the CDN script has been removed here — running both
+      at once is redundant and the CDN version also won't work offline inside
+      the packaged desktop app.
+    -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

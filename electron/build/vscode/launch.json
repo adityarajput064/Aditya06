@@ -1,0 +1,42 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            // Frontend (React) ko debug karne ke liye — pehle "npm run dev" chala lein,
+            // fir isse launch karein. Vite dev server yahan port 5173 par chalta hai
+            // (8080 nahi — hamara vite.config.js 5173 use karta hai).
+            "type": "chrome",
+            "request": "launch",
+            "name": "Launch Chrome against Vite dev server",
+            "url": "http://localhost:5173",
+            "webRoot": "${workspaceFolder}"
+        },
+        {
+            // Electron ka main process (electron/main.js) debug karne ke liye.
+            // Ye khud Vite dev server + Electron window dono start kar dega.
+            "type": "node",
+            "request": "launch",
+            "name": "Debug Electron main process",
+            "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+            "windows": {
+                "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron.cmd"
+            },
+            "program": "${workspaceFolder}/electron/main.js",
+            "env": {
+                "ELECTRON_START_URL": "http://localhost:5173"
+            },
+            "outputCapture": "std"
+        }
+    ],
+    "compounds": [
+        {
+            // "npm run dev" background me chalao, fir ye run karo — Chrome (frontend)
+            // aur Electron (main process) dono ek saath debug ho jayenge.
+            "name": "Debug Full App (Chrome + Electron)",
+            "configurations": ["Launch Chrome against Vite dev server", "Debug Electron main process"]
+        }
+    ]
+}

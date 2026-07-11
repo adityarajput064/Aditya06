@@ -1,0 +1,491 @@
+require('dotenv').config();
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const http = require('http');
+const path = require('path');
+const multer = require('multer');
+const { Server } = require('socket.io');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+const app = express();
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(cors());
+
+// Desktop (Electron) app mein uploads folder userData directory mein rakha jaata
+// hai (writable), kyunki packaged app ke andar ka folder read-only hota hai.
+// Normal (non-Electron) run mein yeh local ./uploads folder use karega.
+const fs = require('fs');
+const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+// Uploaded files (study materials) yahan se serve honge, e.g. /uploads/167123-notes.pdf
+app.use('/uploads', express.static(uploadsDir));
+
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
+
+// === DATABASE (ab .env se aa raha hai, hardcoded nahi) ===
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ Database Connected Successfully!"))
+  .catch((err) => console.log("❌ Database Connection Failed:", err.message));
+
+// === SCHEMAS ===
+// NOTE: Ab yehi single source of truth hai. models/User.js aur models/Post.js
+// (jo pehle unused/mismatched the) ab isi file ke schema se replace ho gaye hain.
+const UserSchema = new mongoose.Schema({
+    username: { type: String, required: true, unique: true },
+    email: { type: String, required: true, unique: true },
+    mobile: { type: String, unique: true, sparse: true },
+    password: { type: String, required: true }, // ab hashed store hoga
+    profilePic: { type: String, default: "" },
+    bio: { type: String, default: "Hey there! I am using Campus Connect." },
+    department: { type: String, default: "" },
+    institute: { type: String, default: "" },
+    enrollmentNumber: { type: String, default: "" },
+    skills: { type: String, default: "" },
+    privacy: {
+        showEmail: { type: Boolean, default: true },
+        showMobile: { type: Boolean, default: false }
+    }
+});
+const User = mongoose.model('User', UserSchema);
+
+const Post = mongoose.model('Post', new mongoose.Schema({
+    username: String,
+    content: String,
+    type: {
+        type: String,
+        enum: ['general', 'image', 'pdf', 'notes', 'question', 'poll', 'lostfound', 'event', 'notice'],
+        default: 'general'
+    },
+    club: { type: String, default: null }, // e.g. "esports-club" — group page filtering ke liye (optional)
+    imageUrl: String,           // "image" type ke liye
+    fileUrl: String,            // "pdf"/"notes" type ke liye (base64 data URL)
+    fileName: String,
+    eventDate: String,          // "event" type ke liye
+    pollOptions: [{
+        text: String,
+        votes: [String]         // usernames jo isko vote kar chuke hain
+    }],
+    likes: { type: Number, default: 0 },
+    likedBy: [String],          // toggle ke liye (dobara like = unlike)
+    savedBy: [String],          // bookmark/save karne wale users
+    shareCount: { type: Number, default: 0 },
+    comments: [{ username: String, text: String }]
+}, { timestamps: true }));
+
+// === STUDY MATERIALS (naya) ===
+// Posts se alag rakha hai jaan-boojh kar: materials real files hote hain (disk pe
+// multer se store), feed posts (base64 fileUrl) se alag concern hai.
+const MaterialSchema = new mongoose.Schema({
+    title: { type: String, required: true },
+    department: { type: String, default: "General" },
+    fileUrl: { type: String, required: true },   // e.g. "/uploads/167123-notes.pdf"
+    fileName: String,
+    uploadedBy: String,   // server route se set hota hai (JWT se), client se trust nahi karte
+}, { timestamps: true });
+const Material = mongoose.model('Material', MaterialSchema);
+
+// === NOTICES (naya) ===
+const NoticeSchema = new mongoose.Schema({
+    title: { type: String, required: true },
+    content: { type: String, required: true },
+    department: { type: String, default: "Admin Office" },
+    postedBy: String,   // server route se set hota hai (JWT se)
+}, { timestamps: true });
+const Notice = mongoose.model('Notice', NoticeSchema);
+
+// GROUP CHAT: 30 second baad MongoDB khud document delete kar dega (TTL index).
+// Note: MongoDB ka TTL background job ~60 sec mein ek baar chalta hai, isliye
+// database se delete hone mein 30-90 sec lag sakta hai. Frontend alag se
+// exact 30 sec pe message UI se hata dega, isliye user ko exact 30 sec hi dikhega.
+const GroupMessageSchema = new mongoose.Schema({
+    username: String,
+    text: String,
+    createdAt: { type: Date, default: Date.now, expires: 30 }
+});
+const GroupMessage = mongoose.model('GroupMessage', GroupMessageSchema);
+
+// PRIVATE CHAT: 6 ghante (21600 seconds) baad automatically delete ho jata hai
+const PrivateMessageSchema = new mongoose.Schema({
+    from: String,
+    to: String,
+    text: String,
+    createdAt: { type: Date, default: Date.now, expires: 21600 } // 6 hours = 6 * 60 * 60
+});
+const PrivateMessage = mongoose.model('PrivateMessage', PrivateMessageSchema);
+
+// Do usernames se hamesha same, consistent "room id" banane ke liye
+// (taaki A->B aur B->A dono same room mein milein)
+const getPrivateRoomId = (userA, userB) => [userA, userB].sort().join("__");
+
+// === AUTH MIDDLEWARE (JWT verify) ===
+const authMiddleware = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ message: "No token provided" });
+    }
+    const token = authHeader.split(" ")[1];
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded; // { id, username }
+        next();
+    } catch (err) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+    }
+};
+
+// === MULTER (study material file uploads) ===
+const uploadStorage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, uploadsDir),
+    filename: (req, file, cb) => {
+        const safeName = file.originalname.replace(/\s+/g, '_');
+        cb(null, `${Date.now()}-${safeName}`);
+    }
+});
+const upload = multer({
+    storage: uploadStorage,
+    limits: { fileSize: 20 * 1024 * 1024 } // 20MB cap
+});
+
+io.on('connection', (socket) => {
+    socket.on('send-reply', (data) => { io.emit('receive-notification', data); });
+
+    // === GROUP CHAT (Discuss Room) ===
+    socket.on('send-group-msg', async (data) => {
+        try {
+            const saved = await new GroupMessage({ username: data.username, text: data.text }).save();
+            io.emit('receive-group-msg', {
+                _id: saved._id,
+                username: saved.username,
+                text: saved.text,
+                createdAt: saved.createdAt
+            });
+        } catch (err) { console.error("Group message save failed:", err.message); }
+    });
+
+    // === PRIVATE CHAT (1-on-1) ===
+    // Dono users ko is common room mein join karwate hain taaki messages sirf unke beech rahein
+    socket.on('join-private-room', ({ myUsername, otherUsername }) => {
+        const roomId = getPrivateRoomId(myUsername, otherUsername);
+        socket.join(roomId);
+    });
+
+    socket.on('send-private-msg', async ({ from, to, text }) => {
+        try {
+            const saved = await new PrivateMessage({ from, to, text }).save();
+            const roomId = getPrivateRoomId(from, to);
+            io.to(roomId).emit('receive-private-msg', {
+                _id: saved._id,
+                from: saved.from,
+                to: saved.to,
+                text: saved.text,
+                createdAt: saved.createdAt
+            });
+        } catch (err) { console.error("Private message save failed:", err.message); }
+    });
+});
+
+// === AUTH ROUTES ===
+app.post('/api/signup', async (req, res) => {
+    try {
+        const { username, email, mobile, password } = req.body;
+        if (!username || !email || !password) {
+            return res.status(400).json({ message: "Username, email, and password are required" });
+        }
+
+        const existing = await User.findOne({ $or: [{ username }, { email }] });
+        if (existing) {
+            return res.status(400).json({ message: "Username or email already in use" });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newUser = new User({ username, email, mobile, password: hashedPassword });
+        await newUser.save();
+        res.json({ message: "Signup Success" });
+    } catch (err) {
+        res.status(500).json({ message: "Signup failed", error: err.message });
+    }
+});
+
+app.post('/api/login', async (req, res) => {
+    try {
+        const { identifier, password } = req.body;
+        const user = await User.findOne({
+            $or: [{ username: identifier }, { email: identifier }, { mobile: identifier }]
+        });
+
+        if (!user) return res.status(400).json({ message: "Invalid credentials" });
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
+
+        const token = jwt.sign({ id: user._id, username: user.username }, process.env.JWT_SECRET, { expiresIn: "7d" });
+
+        // Poori profile info bhi bhej rahe hain taaki frontend localStorage mein sab save kar sake
+        res.json({
+            token,
+            username: user.username,
+            email: user.email,
+            mobile: user.mobile,
+            profilePic: user.profilePic,
+            bio: user.bio,
+            department: user.department,
+            institute: user.institute,
+            enrollmentNumber: user.enrollmentNumber,
+            skills: user.skills
+        });
+    } catch (err) {
+        res.status(500).json({ message: "Login failed", error: err.message });
+    }
+});
+
+// === PROFILE ROUTES (ab protected, JWT chahiye) ===
+app.get('/api/users/:username', async (req, res) => {
+    try {
+        const user = await User.findOne({ username: req.params.username }).select("-password");
+        if (user) res.json(user); else res.status(404).json({ message: "Not found" });
+    } catch (err) { res.status(500).json(err); }
+});
+
+app.put('/api/users/:username', authMiddleware, async (req, res) => {
+    try {
+        // User sirf apni hi profile edit kar sakta hai, kisi aur ki nahi
+        if (req.user.username !== req.params.username) {
+            return res.status(403).json({ message: "You can only edit your own profile" });
+        }
+        const { password, ...safeUpdates } = req.body; // password yahan se update nahi hoga
+        const updatedUser = await User.findOneAndUpdate(
+            { username: req.params.username },
+            { $set: safeUpdates },
+            { new: true }
+        ).select("-password");
+        res.json(updatedUser);
+    } catch (err) { res.status(500).json(err); }
+});
+
+// === POST ROUTES (ab protected) ===
+// ?club=slug diya jaaye toh sirf usi club ke posts (ClubDetail page ke liye)
+app.get('/api/posts', async (req, res) => {
+    try {
+        const filter = req.query.club ? { club: req.query.club } : {};
+        const posts = await Post.find(filter).sort({ createdAt: -1 });
+        res.json(posts);
+    }
+    catch (err) { res.status(500).json(err); }
+});
+
+app.post('/api/posts', authMiddleware, async (req, res) => {
+    try {
+        const newPost = new Post({ ...req.body, username: req.user.username });
+        await newPost.save();
+        res.json(newPost);
+    } catch (err) { res.status(500).json(err); }
+});
+
+app.put('/api/posts/:id/like', authMiddleware, async (req, res) => {
+    try {
+        const post = await Post.findById(req.params.id);
+        if (!post) return res.status(404).json({ message: "Post not found" });
+        const username = req.user.username;
+        const alreadyLiked = post.likedBy.includes(username);
+        if (alreadyLiked) {
+            post.likedBy = post.likedBy.filter((u) => u !== username);
+            post.likes = Math.max(0, post.likes - 1);
+        } else {
+            post.likedBy.push(username);
+            post.likes += 1;
+        }
+        await post.save();
+        res.json(post);
+    } catch (err) { res.status(500).json(err); }
+});
+
+app.put('/api/posts/:id/save', authMiddleware, async (req, res) => {
+    try {
+        const post = await Post.findById(req.params.id);
+        if (!post) return res.status(404).json({ message: "Post not found" });
+        const username = req.user.username;
+        const alreadySaved = post.savedBy.includes(username);
+        if (alreadySaved) {
+            post.savedBy = post.savedBy.filter((u) => u !== username);
+        } else {
+            post.savedBy.push(username);
+        }
+        await post.save();
+        res.json(post);
+    } catch (err) { res.status(500).json(err); }
+});
+
+app.put('/api/posts/:id/share', authMiddleware, async (req, res) => {
+    try {
+        const post = await Post.findById(req.params.id);
+        if (!post) return res.status(404).json({ message: "Post not found" });
+        post.shareCount += 1;
+        await post.save();
+        res.json(post);
+    } catch (err) { res.status(500).json(err); }
+});
+
+// Poll par vote karna - ek user sirf ek hi option pe vote kar sakta hai (revote allowed, replace hoga)
+app.put('/api/posts/:id/vote', authMiddleware, async (req, res) => {
+    try {
+        const post = await Post.findById(req.params.id);
+        if (!post) return res.status(404).json({ message: "Post not found" });
+        const { optionIndex } = req.body;
+        const username = req.user.username;
+
+        // Pehle is user ka vote sabhi options se hata do (agar tha to)
+        post.pollOptions.forEach((opt) => {
+            opt.votes = opt.votes.filter((u) => u !== username);
+        });
+        // Fir naye option mein add karo
+        if (post.pollOptions[optionIndex]) {
+            post.pollOptions[optionIndex].votes.push(username);
+        }
+        await post.save();
+        res.json(post);
+    } catch (err) { res.status(500).json(err); }
+});
+
+app.post('/api/posts/:id/reply', authMiddleware, async (req, res) => {
+    try {
+        const post = await Post.findById(req.params.id);
+        post.comments.push({ username: req.user.username, text: req.body.text });
+        await post.save();
+        io.emit('send-reply', { text: "Naya reply aaya hai!" });
+        res.json(post);
+    } catch (err) { res.status(500).json(err); }
+});
+
+app.delete('/api/posts/:id', authMiddleware, async (req, res) => {
+    try {
+        const post = await Post.findById(req.params.id);
+        if (!post) return res.status(404).json({ message: "Post not found" });
+        // Sirf apna post delete kar sakta hai
+        if (post.username !== req.user.username) {
+            return res.status(403).json({ message: "You can only delete your own posts" });
+        }
+        await Post.findByIdAndDelete(req.params.id);
+        res.json({ message: "Deleted" });
+    } catch (err) { res.status(500).json(err); }
+});
+
+// === STUDY MATERIALS ROUTES (naye) ===
+app.get('/api/materials', async (req, res) => {
+    try {
+        const materials = await Material.find().sort({ createdAt: -1 });
+        res.json(materials);
+    } catch (err) { res.status(500).json(err); }
+});
+
+app.post('/api/materials', authMiddleware, upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ message: "File is required" });
+        const newMaterial = new Material({
+            title: req.body.title,
+            department: req.body.department,
+            fileUrl: `/uploads/${req.file.filename}`,
+            fileName: req.file.originalname,
+            uploadedBy: req.user.username, // client se aaya value ignore, JWT se trusted username
+        });
+        await newMaterial.save();
+        res.json(newMaterial);
+    } catch (err) { res.status(500).json(err); }
+});
+
+app.delete('/api/materials/:id', authMiddleware, async (req, res) => {
+    try {
+        const material = await Material.findById(req.params.id);
+        if (!material) return res.status(404).json({ message: "Material not found" });
+        if (material.uploadedBy !== req.user.username) {
+            return res.status(403).json({ message: "You can only delete your own uploads" });
+        }
+        await Material.findByIdAndDelete(req.params.id);
+        res.json({ message: "Deleted" });
+    } catch (err) { res.status(500).json(err); }
+});
+
+// === NOTICE BOARD ROUTES (naye) ===
+app.get('/api/notices', async (req, res) => {
+    try {
+        const notices = await Notice.find().sort({ createdAt: -1 });
+        res.json(notices);
+    } catch (err) { res.status(500).json(err); }
+});
+
+app.post('/api/notices', authMiddleware, async (req, res) => {
+    try {
+        const newNotice = new Notice({
+            title: req.body.title,
+            content: req.body.content,
+            department: req.body.department,
+            postedBy: req.user.username, // client se aaya value ignore, JWT se trusted username
+        });
+        await newNotice.save();
+        res.json(newNotice);
+    } catch (err) { res.status(500).json(err); }
+});
+
+app.delete('/api/notices/:id', authMiddleware, async (req, res) => {
+    try {
+        const notice = await Notice.findById(req.params.id);
+        if (!notice) return res.status(404).json({ message: "Notice not found" });
+        if (notice.postedBy !== req.user.username) {
+            return res.status(403).json({ message: "You can only delete your own notices" });
+        }
+        await Notice.findByIdAndDelete(req.params.id);
+        res.json({ message: "Deleted" });
+    } catch (err) { res.status(500).json(err); }
+});
+
+// === CHAT ROUTES ===
+
+// Sab users ki list (private chat start karne ke liye, apna naam chhodke)
+app.get('/api/users', authMiddleware, async (req, res) => {
+    try {
+        const users = await User.find({ username: { $ne: req.user.username } }).select("username profilePic department");
+        res.json(users);
+    } catch (err) { res.status(500).json(err); }
+});
+
+// Group chat ke abhi tak zinda (30 sec se purane nahi) messages
+app.get('/api/messages/group', authMiddleware, async (req, res) => {
+    try {
+        const messages = await GroupMessage.find().sort({ createdAt: 1 });
+        res.json(messages);
+    } catch (err) { res.status(500).json(err); }
+});
+
+// Kisi ek user ke saath private conversation history
+app.get('/api/messages/private/:otherUsername', authMiddleware, async (req, res) => {
+    try {
+        const roomId = getPrivateRoomId(req.user.username, req.params.otherUsername);
+        const messages = await PrivateMessage.find({
+            $or: [
+                { from: req.user.username, to: req.params.otherUsername },
+                { from: req.params.otherUsername, to: req.user.username }
+            ]
+        }).sort({ createdAt: 1 });
+        res.json(messages);
+    } catch (err) { res.status(500).json(err); }
+});
+
+// === STATS (Dashboard top cards ke liye) ===
+app.get('/api/stats', authMiddleware, async (req, res) => {
+    try {
+        const [students, notes, notices, events] = await Promise.all([
+            User.countDocuments(),
+            Post.countDocuments({ type: { $in: ['notes', 'pdf'] } }),
+            Notice.countDocuments(),
+            Post.countDocuments({ type: 'event' })
+        ]);
+        res.json({ students, notes, notices, events });
+    } catch (err) { res.status(500).json(err); }
+});
+
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
