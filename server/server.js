@@ -8,21 +8,23 @@ const multer = require('multer');
 const { Server } = require('socket.io');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors());
 
-// Desktop (Electron) app mein uploads folder userData directory mein rakha jaata
-// hai (writable), kyunki packaged app ke andar ka folder read-only hota hai.
-// Normal (non-Electron) run mein yeh local ./uploads folder use karega.
-const fs = require('fs');
-const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
-// Uploaded files (study materials) yahan se serve honge, e.g. /uploads/167123-notes.pdf
-app.use('/uploads', express.static(uploadsDir));
+// === CLOUDINARY SETUP (web deployment ke liye) ===
+// Electron desktop wale local uploads/ folder approach ki jagah ab files
+// Cloudinary (cloud storage) par jaati hain — web hosting (Render) par disk
+// storage persistent nahi hota (restart pe delete ho jaata), isliye ye zaroori hai.
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
@@ -78,12 +80,12 @@ const Post = mongoose.model('Post', new mongoose.Schema({
 }, { timestamps: true }));
 
 // === STUDY MATERIALS (naya) ===
-// Posts se alag rakha hai jaan-boojh kar: materials real files hote hain (disk pe
-// multer se store), feed posts (base64 fileUrl) se alag concern hai.
+// Posts se alag rakha hai jaan-boojh kar: materials real files hote hain (ab
+// Cloudinary par store), feed posts (base64 fileUrl) se alag concern hai.
 const MaterialSchema = new mongoose.Schema({
     title: { type: String, required: true },
     department: { type: String, default: "General" },
-    fileUrl: { type: String, required: true },   // e.g. "/uploads/167123-notes.pdf"
+    fileUrl: { type: String, required: true },   // ab Cloudinary ka secure_url
     fileName: String,
     uploadedBy: String,   // server route se set hota hai (JWT se), client se trust nahi karte
 }, { timestamps: true });
@@ -138,13 +140,17 @@ const authMiddleware = (req, res, next) => {
     }
 };
 
-// === MULTER (study material file uploads) ===
-const uploadStorage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, uploadsDir),
-    filename: (req, file, cb) => {
-        const safeName = file.originalname.replace(/\s+/g, '_');
-        cb(null, `${Date.now()}-${safeName}`);
-    }
+// === MULTER + CLOUDINARY (study material file uploads) ===
+// Disk storage ki jagah ab seedha Cloudinary par upload hota hai.
+const uploadStorage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+        folder: 'campus-connect-materials',
+        resource_type: 'auto', // images, PDFs, docs — sab handle karega
+        // Original filename (extension ke bina) ko public_id mein rakhte hain
+        // taaki Cloudinary URL thoda readable rahe
+        public_id: (req, file) => `${Date.now()}-${path.parse(file.originalname).name.replace(/\s+/g, '_')}`,
+    },
 });
 const upload = multer({
     storage: uploadStorage,
@@ -388,7 +394,7 @@ app.post('/api/materials', authMiddleware, upload.single('file'), async (req, re
         const newMaterial = new Material({
             title: req.body.title,
             department: req.body.department,
-            fileUrl: `/uploads/${req.file.filename}`,
+            fileUrl: req.file.path, // Cloudinary ka secure_url yahan aata hai
             fileName: req.file.originalname,
             uploadedBy: req.user.username, // client se aaya value ignore, JWT se trusted username
         });
