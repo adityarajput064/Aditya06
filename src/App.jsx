@@ -7,8 +7,9 @@ import { Profile } from "./pages/Profile";
 import { StudyMaterials } from "./pages/StudyMaterials";
 import { NoticeBoard } from "./pages/NoticeBoard";
 import { ClubDetail } from "./pages/ClubDetail";
-import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AboutApp } from "./pages/AboutApp";
+import { ProtectedRoute } from "./components/ProtectedRoute";
+import { AIAssistant } from "./components/AIAssistant";
 
 function App() {
   return (
@@ -26,6 +27,9 @@ function App() {
         <Route path="/notice-board" element={<ProtectedRoute><NoticeBoard /></ProtectedRoute>} />
         <Route path="/club/:slug" element={<ProtectedRoute><ClubDetail /></ProtectedRoute>} />
       </Routes>
+
+      {/* NAYA — poore app mein globally floating rehta hai, khud check karta hai login hai ya nahi */}
+      <AIAssistant />
     </Router>
   );
 }

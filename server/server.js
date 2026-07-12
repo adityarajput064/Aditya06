@@ -760,5 +760,45 @@ app.get('/api/stats', authMiddleware, async (req, res) => {
     } catch (err) { res.status(500).json(err); }
 });
 
+// === 🛑 NAYA: AI ASSISTANT (Google Gemini — free tier se connected) ===
+// Node 18+ mein fetch built-in hai, isliye koi extra npm package nahi lagi.
+app.post('/api/ai/chat', authMiddleware, async (req, res) => {
+    try {
+        const { message } = req.body;
+        if (!message || !message.trim()) {
+            return res.status(400).json({ message: "Message khali nahi ho sakta" });
+        }
+
+        const systemPrompt = `Tum "Campus AI" ho — Campus Connect app (ek college students ke liye bana campus app) ka built-in assistant.
+Tumhara kaam students ki padhai aur campus life mein madad karna hai: concepts explain karna, study notes dhoondhne mein guide karna (jo "Study Materials" section mein milte hain), GTU jaisi university ke purane papers (PYQ) ke baare mein general study tips dena, aur agar koi Attendance ya Events poochhe to unhe bata dena ki Events "Notice Board" mein aur Dashboard ke "Upcoming Events" mein milte hain, aur Attendance tracking abhi is app mein available nahi hai.
+Hamesha friendly, concise aur helpful jawab do — Hinglish (Hindi + English mix) mein baat karo jaisa Indian college students aapas mein karte hain. Zaroorat se zyada lamba jawab mat do.`;
+
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    contents: [{ role: "user", parts: [{ text: message }] }],
+                }),
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            console.error("Gemini API error:", data);
+            return res.status(502).json({ message: "AI se jawab nahi mila, thodi der baad try karo." });
+        }
+
+        const reply = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "Maaf karo, jawab nahi mil paya.";
+        res.json({ reply });
+    } catch (err) {
+        console.error("AI chat failed:", err.message);
+        res.status(500).json({ message: "Server error, thodi der baad try karo." });
+    }
+});
+
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
