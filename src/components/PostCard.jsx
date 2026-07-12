@@ -51,16 +51,25 @@ export const PostCard = ({ post, currentUsername, onDelete, onLike, onSave, onSh
 
       <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center text-base font-semibold"
-            style={{
-              background: "color-mix(in srgb, var(--accent-1) 16%, transparent)",
-              color: "var(--accent-1)",
-              border: "1px solid color-mix(in srgb, var(--accent-1) 35%, transparent)",
-            }}
-          >
-            {post.username ? post.username[0].toUpperCase() : "?"}
-          </div>
+          {post.profilePic ? (
+            <img
+              src={post.profilePic}
+              alt={post.username}
+              className="w-10 h-10 rounded-full object-cover"
+              style={{ border: "1px solid color-mix(in srgb, var(--accent-1) 35%, transparent)" }}
+            />
+          ) : (
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center text-base font-semibold"
+              style={{
+                background: "color-mix(in srgb, var(--accent-1) 16%, transparent)",
+                color: "var(--accent-1)",
+                border: "1px solid color-mix(in srgb, var(--accent-1) 35%, transparent)",
+              }}
+            >
+              {post.username ? post.username[0].toUpperCase() : "?"}
+            </div>
+          )}
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-semibold text-sm" style={{ color: "var(--text-main)" }}>{post.username}</h3>

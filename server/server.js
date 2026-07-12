@@ -124,6 +124,7 @@ async function sendNoticeToAll(title, message, url) {
 
 const Post = mongoose.model('Post', new mongoose.Schema({
     username: String,
+    profilePic: { type: String, default: "" }, // NAYA — post banane waale user ki profile photo
     content: String,
     type: {
         type: String,
@@ -353,7 +354,10 @@ app.get('/api/posts', async (req, res) => {
 
 app.post('/api/posts', authMiddleware, async (req, res) => {
     try {
-        const newPost = new Post({ ...req.body, username: req.user.username });
+        // Post ke saath current profilePic bhi save karte hain, taaki feed mein
+        // sahi (latest) profile photo dikhe, sirf letter wala default avatar nahi
+        const user = await User.findOne({ username: req.user.username });
+        const newPost = new Post({ ...req.body, username: req.user.username, profilePic: user?.profilePic || "" });
         await newPost.save();
         res.json(newPost);
     } catch (err) { res.status(500).json(err); }
