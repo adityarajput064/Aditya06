@@ -3,6 +3,13 @@ import { useNavigate } from "react-router-dom";
 // === ADITECH — About / Credits Page ===
 // Standalone hai, koi external CSS file pe depend nahi karta (sab inline styles),
 // isliye kisi bhi project mein directly drop kar sakte ho.
+// NOTE: teen images "public" folder mein honi chahiye (root level, src ke bahar):
+//   public/campus-connect-logo.png
+//   public/aditech-logo.png
+//   public/aditya-photo.jpg
+const campusConnectLogo = "/campus-connect-logo.png";
+const aditechLogo = "/aditech-logo.png";
+const adityaPhoto = "/aditya-photo.jpg";
 
 const styles = {
   page: {
@@ -158,6 +165,22 @@ const styles = {
     color: "#64748b",
     marginTop: "30px",
   },
+  logoImg: {
+    width: "84px",
+    height: "84px",
+    borderRadius: "22px",
+    objectFit: "cover",
+    margin: "0 auto 14px",
+    boxShadow: "0 10px 30px rgba(99,102,241,0.35)",
+    display: "block",
+  },
+  avatarImg: {
+    width: "46px",
+    height: "46px",
+    borderRadius: "50%",
+    objectFit: "cover",
+    flexShrink: 0,
+  },
 };
 
 export function AboutApp() {
@@ -170,7 +193,7 @@ export function AboutApp() {
       </button>
 
       <div style={styles.hero}>
-        <div style={styles.logoCircle}>AT</div>
+        <img src={campusConnectLogo} alt="Campus Connect" style={styles.logoImg} />
         <h1 style={styles.appName}>Campus Connect</h1>
         <p style={styles.tagline}>Part of the ADITECH platform</p>
       </div>
@@ -179,7 +202,7 @@ export function AboutApp() {
       <div style={styles.card}>
         <div style={styles.cardTitle}>Created By</div>
         <div style={styles.creatorRow}>
-          <div style={styles.creatorAvatar}>AR</div>
+          <img src={adityaPhoto} alt="Aditya Rajput" style={styles.avatarImg} />
           <div>
             <p style={styles.creatorName}>Aditya Rajput</p>
             <p style={styles.creatorRole}>Design, Development & Deployment</p>
@@ -191,7 +214,7 @@ export function AboutApp() {
       <div style={styles.card}>
         <div style={styles.cardTitle}>Platform</div>
         <div style={styles.creatorRow}>
-          <div style={styles.creatorAvatar}>AT</div>
+          <img src={aditechLogo} alt="ADITECH" style={{ ...styles.avatarImg, borderRadius: "10px", background: "#0b1220" }} />
           <div>
             <p style={styles.creatorName}>ADITECH</p>
             <p style={styles.creatorRole}>
