@@ -5,6 +5,7 @@ import api from "../utils/api";
 
 const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000");
 const GROUP_MESSAGE_LIFETIME_MS = 30000; // 30 seconds
+const TYPING_STOP_DELAY_MS = 1500; // itni der chup rehne pe "typing" hat jayega
 
 export const Chat = () => {
   const navigate = useNavigate();
@@ -23,11 +24,32 @@ export const Chat = () => {
   const [privateMsg, setPrivateMsg] = useState("");
   const [privateChat, setPrivateChat] = useState([]);
 
+  // --- 🛑 NAYA: Online users state ---
+  const [onlineUsernames, setOnlineUsernames] = useState([]);
+
+  // --- 🛑 NAYA: Typing indicator state ---
+  const [groupTypingUsers, setGroupTypingUsers] = useState([]); // usernames jo abhi type kar rahe hain
+  const [isOtherUserTyping, setIsOtherUserTyping] = useState(false); // private chat ke liye
+  const groupTypingTimeoutRef = useRef(null); // apna typing-stop bhejne ka debounce timer
+  const privateTypingTimeoutRef = useRef(null);
+  const otherTypingTimersRef = useRef({}); // group: har typing user ka apna auto-clear timer
+
   const chatEndRef = useRef(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [groupChat, privateChat]);
+
+  // === 🛑 NAYA: ONLINE USERS + REGISTER ===
+  useEffect(() => {
+    if (username) socket.emit("register-user", username);
+
+    socket.on("online-users", (usernamesList) => {
+      setOnlineUsernames(usernamesList);
+    });
+
+    return () => socket.off("online-users");
+  }, [username]);
 
   const scheduleRemoval = (msgId) => {
     const timeout = setTimeout(() => {
@@ -63,18 +85,52 @@ export const Chat = () => {
     socket.on("receive-group-msg", (data) => {
       setGroupChat((prev) => [...prev, data]);
       scheduleRemoval(data._id);
+      // NAYA — message aa gaya, to us user ka typing indicator turant hata do
+      setGroupTypingUsers((prev) => prev.filter((u) => u !== data.username));
+      clearTimeout(otherTypingTimersRef.current[data.username]);
+    });
+
+    // === 🛑 NAYA: GROUP TYPING INDICATOR LISTENERS ===
+    socket.on("group-typing-start", (typingUsername) => {
+      if (typingUsername === username) return; // apna khud ka typing skip
+      setGroupTypingUsers((prev) => (prev.includes(typingUsername) ? prev : [...prev, typingUsername]));
+      // Safety net — agar kisi wajah se "stop" event miss ho jaye, to 3 sec baad khud hata do
+      clearTimeout(otherTypingTimersRef.current[typingUsername]);
+      otherTypingTimersRef.current[typingUsername] = setTimeout(() => {
+        setGroupTypingUsers((prev) => prev.filter((u) => u !== typingUsername));
+      }, 3000);
+    });
+    socket.on("group-typing-stop", (typingUsername) => {
+      setGroupTypingUsers((prev) => prev.filter((u) => u !== typingUsername));
+      clearTimeout(otherTypingTimersRef.current[typingUsername]);
     });
 
     return () => {
       socket.off("receive-group-msg");
+      socket.off("group-typing-start");
+      socket.off("group-typing-stop");
       Object.values(groupTimers.current).forEach(clearTimeout);
+      Object.values(otherTypingTimersRef.current).forEach(clearTimeout);
     };
-  }, []);
+  }, [username]);
 
   const sendGroupMessage = () => {
     if (!groupMsg.trim()) return;
     socket.emit("send-group-msg", { username, text: groupMsg });
     setGroupMsg("");
+    // NAYA — message bhejte hi apna typing indicator band kar do
+    clearTimeout(groupTypingTimeoutRef.current);
+    socket.emit("group-typing-stop", username);
+  };
+
+  // === 🛑 NAYA: GROUP INPUT TYPING HANDLER ===
+  const handleGroupInputChange = (e) => {
+    setGroupMsg(e.target.value);
+    socket.emit("group-typing-start", username);
+    clearTimeout(groupTypingTimeoutRef.current);
+    groupTypingTimeoutRef.current = setTimeout(() => {
+      socket.emit("group-typing-stop", username);
+    }, TYPING_STOP_DELAY_MS);
   };
 
   // === PRIVATE CHAT SETUP ===
@@ -91,6 +147,7 @@ export const Chat = () => {
   const openPrivateChat = async (otherUser) => {
     setSelectedUser(otherUser);
     setActiveTab("private");
+    setIsOtherUserTyping(false);
     socket.emit("join-private-room", { myUsername: username, otherUsername: otherUser.username });
     try {
       const res = await api.get(`/api/messages/private/${otherUser.username}`);
@@ -106,22 +163,52 @@ export const Chat = () => {
           (data.from === selectedUser.username && data.to === username))
       ) {
         setPrivateChat((prev) => [...prev, data]);
+        setIsOtherUserTyping(false); // NAYA — message aa gaya to typing indicator hata do
       }
     });
-    return () => socket.off("receive-private-msg");
+
+    // === 🛑 NAYA: PRIVATE TYPING INDICATOR LISTENERS ===
+    socket.on("private-typing-start", ({ from }) => {
+      if (selectedUser && from === selectedUser.username) setIsOtherUserTyping(true);
+    });
+    socket.on("private-typing-stop", ({ from }) => {
+      if (selectedUser && from === selectedUser.username) setIsOtherUserTyping(false);
+    });
+
+    return () => {
+      socket.off("receive-private-msg");
+      socket.off("private-typing-start");
+      socket.off("private-typing-stop");
+    };
   }, [selectedUser, username]);
 
   const sendPrivateMessage = () => {
     if (!privateMsg.trim() || !selectedUser) return;
     socket.emit("send-private-msg", { from: username, to: selectedUser.username, text: privateMsg });
     setPrivateMsg("");
+    // NAYA — message bhejte hi apna typing indicator band kar do
+    clearTimeout(privateTypingTimeoutRef.current);
+    socket.emit("private-typing-stop", { from: username, to: selectedUser.username });
   };
+
+  // === 🛑 NAYA: PRIVATE INPUT TYPING HANDLER ===
+  const handlePrivateInputChange = (e) => {
+    setPrivateMsg(e.target.value);
+    if (!selectedUser) return;
+    socket.emit("private-typing-start", { from: username, to: selectedUser.username });
+    clearTimeout(privateTypingTimeoutRef.current);
+    privateTypingTimeoutRef.current = setTimeout(() => {
+      socket.emit("private-typing-stop", { from: username, to: selectedUser.username });
+    }, TYPING_STOP_DELAY_MS);
+  };
+
+  const isUserOnline = (uname) => onlineUsernames.includes(uname);
 
   return (
     <div className="min-h-screen bg-[#050505] text-white p-6 flex flex-col">
       <button onClick={() => navigate("/dashboard")} className="text-cyan-400 mb-4 self-start">← Back</button>
 
-      <div className="flex gap-2 mb-4 max-w-4xl mx-auto w-full">
+      <div className="flex gap-2 mb-4 max-w-5xl mx-auto w-full">
         <button
           onClick={() => setActiveTab("group")}
           className={`px-6 py-2 rounded-xl font-bold transition ${activeTab === "group" ? "bg-cyan-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}
@@ -134,35 +221,74 @@ export const Chat = () => {
         >
           💬 Direct Messages
         </button>
+
+        {/* NAYA — kitne log abhi online hain, quick glance */}
+        <div className="ml-auto flex items-center gap-2 px-4 rounded-xl bg-gray-900 border border-gray-800 text-xs text-gray-400">
+          <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+          {onlineUsernames.length} Online
+        </div>
       </div>
 
-      <div className="max-w-4xl mx-auto w-full flex-1 flex gap-4 min-h-0">
+      <div className="max-w-5xl mx-auto w-full flex-1 flex gap-4 min-h-0">
 
         {activeTab === "group" && (
-          <div className="flex-1 flex flex-col">
-            <p className="text-xs text-gray-500 mb-2">⏱️ Messages yahan 30 second baad automatically gayab ho jaate hain.</p>
-            <div className="h-[55vh] bg-[#111111] p-4 rounded-2xl overflow-y-scroll border border-gray-800 flex-1">
-              {groupChat.length === 0 && (
-                <p className="text-gray-600 text-center mt-10">Koi message nahi — sabse pehle likho!</p>
+          <>
+            <div className="flex-1 flex flex-col">
+              <p className="text-xs text-gray-500 mb-2">⏱️ Messages yahan 30 second baad automatically gayab ho jaate hain.</p>
+              <div className="h-[55vh] bg-[#111111] p-4 rounded-2xl overflow-y-scroll border border-gray-800 flex-1">
+                {groupChat.length === 0 && (
+                  <p className="text-gray-600 text-center mt-10">Koi message nahi — sabse pehle likho!</p>
+                )}
+                {groupChat.map((c) => (
+                  <p key={c._id} className="mb-2">
+                    <strong className="text-cyan-400">{c.username}:</strong> {c.text}
+                  </p>
+                ))}
+                <div ref={chatEndRef} />
+              </div>
+
+              {/* NAYA — GROUP TYPING INDICATOR */}
+              <div className="h-5 mt-1 text-xs text-gray-500 italic px-1">
+                {groupTypingUsers.length > 0 && (
+                  groupTypingUsers.length === 1
+                    ? `${groupTypingUsers[0]} type kar raha hai...`
+                    : `${groupTypingUsers.join(", ")} type kar rahe hain...`
+                )}
+              </div>
+
+              <div className="mt-1 flex gap-2">
+                <input
+                  className="w-full bg-gray-800 p-3 rounded-lg outline-none"
+                  value={groupMsg}
+                  onChange={handleGroupInputChange}
+                  onKeyDown={(e) => e.key === "Enter" && sendGroupMessage()}
+                  placeholder="Sabko message bhejo..."
+                />
+                <button onClick={sendGroupMessage} className="bg-cyan-600 px-6 rounded-lg font-bold">Send</button>
+              </div>
+            </div>
+
+            {/* NAYA — ONLINE USERS SIDEBAR (Discord-style) */}
+            <div className="hidden md:block w-56 bg-[#111111] rounded-2xl border border-gray-800 p-3 overflow-y-auto h-[65vh]">
+              <h3 className="text-xs font-bold text-gray-400 uppercase mb-3 px-2">
+                Online — {onlineUsernames.length}
+              </h3>
+              {onlineUsernames.length === 0 && (
+                <p className="text-gray-600 text-sm px-2">Abhi koi online nahi.</p>
               )}
-              {groupChat.map((c) => (
-                <p key={c._id} className="mb-2">
-                  <strong className="text-cyan-400">{c.username}:</strong> {c.text}
-                </p>
+              {onlineUsernames.map((u) => (
+                <div key={u} className="flex items-center gap-2 p-2 rounded-xl mb-1">
+                  <div className="relative">
+                    <div className="w-8 h-8 bg-cyan-900 rounded-full flex items-center justify-center text-sm font-bold text-cyan-300">
+                      {u[0]?.toUpperCase()}
+                    </div>
+                    <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 border-[#111111]" />
+                  </div>
+                  <span className="text-sm truncate">{u}{u === username ? " (You)" : ""}</span>
+                </div>
               ))}
-              <div ref={chatEndRef} />
             </div>
-            <div className="mt-4 flex gap-2">
-              <input
-                className="w-full bg-gray-800 p-3 rounded-lg outline-none"
-                value={groupMsg}
-                onChange={(e) => setGroupMsg(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendGroupMessage()}
-                placeholder="Sabko message bhejo..."
-              />
-              <button onClick={sendGroupMessage} className="bg-cyan-600 px-6 rounded-lg font-bold">Send</button>
-            </div>
-          </div>
+          </>
         )}
 
         {activeTab === "private" && (
@@ -176,8 +302,14 @@ export const Chat = () => {
                   onClick={() => openPrivateChat(u)}
                   className={`w-full flex items-center gap-3 p-2 rounded-xl mb-1 transition ${selectedUser?.username === u.username ? "bg-cyan-900/40 border border-cyan-800" : "hover:bg-gray-800"}`}
                 >
-                  <div className="w-8 h-8 bg-cyan-900 rounded-full flex items-center justify-center text-sm font-bold text-cyan-300">
-                    {u.username[0].toUpperCase()}
+                  <div className="relative">
+                    <div className="w-8 h-8 bg-cyan-900 rounded-full flex items-center justify-center text-sm font-bold text-cyan-300">
+                      {u.username[0].toUpperCase()}
+                    </div>
+                    {/* NAYA — online status dot */}
+                    {isUserOnline(u.username) && (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 border-[#111111]" />
+                    )}
                   </div>
                   <span className="text-sm truncate">{u.username}</span>
                 </button>
@@ -192,7 +324,12 @@ export const Chat = () => {
               ) : (
                 <>
                   <div className="bg-[#111111] px-4 py-3 rounded-t-2xl border border-gray-800 border-b-0">
-                    <p className="font-bold text-cyan-400">{selectedUser.username}</p>
+                    <p className="font-bold text-cyan-400 flex items-center gap-2">
+                      {selectedUser.username}
+                      {isUserOnline(selectedUser.username) && (
+                        <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                      )}
+                    </p>
                     <p className="text-[10px] text-gray-500">⏱️ Messages 6 ghante baad automatically delete ho jaate hain</p>
                   </div>
                   <div className="h-[50vh] bg-[#111111] p-4 overflow-y-scroll border-l border-r border-gray-800 flex-1">
@@ -205,11 +342,17 @@ export const Chat = () => {
                     ))}
                     <div ref={chatEndRef} />
                   </div>
+
+                  {/* NAYA — PRIVATE TYPING INDICATOR */}
+                  <div className="h-5 px-4 bg-[#111111] border-l border-r border-gray-800 text-xs text-gray-500 italic flex items-center">
+                    {isOtherUserTyping && `${selectedUser.username} type kar raha hai...`}
+                  </div>
+
                   <div className="flex gap-2 p-3 bg-[#111111] rounded-b-2xl border border-gray-800 border-t-0">
                     <input
                       className="w-full bg-gray-800 p-3 rounded-lg outline-none"
                       value={privateMsg}
-                      onChange={(e) => setPrivateMsg(e.target.value)}
+                      onChange={handlePrivateInputChange}
                       onKeyDown={(e) => e.key === "Enter" && sendPrivateMessage()}
                       placeholder={`${selectedUser.username} ko message bhejo...`}
                     />

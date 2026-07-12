@@ -280,13 +280,48 @@ const upload = multer({
     limits: { fileSize: 20 * 1024 * 1024 } // 20MB cap
 });
 
+// === 🛑 NAYA: ONLINE USERS TRACKING (Discussion Room ke liye) ===
+// username -> Set of socket ids (ek user multiple tabs/devices se connected ho sakta hai)
+const onlineUsers = new Map();
+
+function broadcastOnlineUsers() {
+    io.emit('online-users', Array.from(onlineUsers.keys()));
+}
+
 io.on('connection', (socket) => {
     socket.on('send-reply', (data) => { io.emit('receive-notification', data); });
 
     // === 🛑 NAYA: HAR USER APNE PERSONAL ROOM MEIN JOIN HOTA HAI ===
     // Isse notifyUser() sirf usi user ko real-time notification bhej payega
     socket.on('register-user', (username) => {
-        if (username) socket.join(username);
+        if (username) {
+            socket.join(username);
+            socket.data.username = username; // NAYA — disconnect pe cleanup ke liye yaad rakhte hain
+
+            // NAYA — online users list mein add karo aur sabko naya list bhej do
+            if (!onlineUsers.has(username)) onlineUsers.set(username, new Set());
+            onlineUsers.get(username).add(socket.id);
+            broadcastOnlineUsers();
+        }
+    });
+
+    // === 🛑 NAYA: GROUP CHAT TYPING INDICATOR ===
+    socket.on('group-typing-start', (typingUsername) => {
+        socket.broadcast.emit('group-typing-start', typingUsername);
+    });
+    socket.on('group-typing-stop', (typingUsername) => {
+        socket.broadcast.emit('group-typing-stop', typingUsername);
+    });
+
+    // === 🛑 NAYA: PRIVATE CHAT TYPING INDICATOR ===
+    // Sirf dusre user ke room mein bhejte hain, taaki sirf wahi dekhe
+    socket.on('private-typing-start', ({ from, to }) => {
+        const roomId = getPrivateRoomId(from, to);
+        socket.to(roomId).emit('private-typing-start', { from });
+    });
+    socket.on('private-typing-stop', ({ from, to }) => {
+        const roomId = getPrivateRoomId(from, to);
+        socket.to(roomId).emit('private-typing-stop', { from });
     });
 
     // === GROUP CHAT (Discuss Room) ===
@@ -321,6 +356,19 @@ io.on('connection', (socket) => {
                 createdAt: saved.createdAt
             });
         } catch (err) { console.error("Private message save failed:", err.message); }
+    });
+
+    // === 🛑 NAYA: DISCONNECT PE ONLINE USERS SE HATA DO ===
+    socket.on('disconnect', () => {
+        const disconnectedUsername = socket.data.username;
+        if (disconnectedUsername && onlineUsers.has(disconnectedUsername)) {
+            onlineUsers.get(disconnectedUsername).delete(socket.id);
+            // Sirf tab remove karo jab uska koi aur tab/device connected na ho
+            if (onlineUsers.get(disconnectedUsername).size === 0) {
+                onlineUsers.delete(disconnectedUsername);
+            }
+            broadcastOnlineUsers();
+        }
     });
 });
 
