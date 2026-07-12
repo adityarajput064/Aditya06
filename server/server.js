@@ -17,6 +17,24 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors());
 
+// === AUTH MIDDLEWARE (JWT verify) ===
+// NAYA: sabse upar move kiya gaya hai, taaki niche kisi bhi route mein
+// (jaise /api/subscribe) use karne se pehle ye defined ho chuke
+const authMiddleware = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ message: "No token provided" });
+    }
+    const token = authHeader.split(" ")[1];
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded; // { id, username }
+        next();
+    } catch (err) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+    }
+};
+
 // === 🛑 NAYA WEB PUSH SETUP (VAPID Keys Configuration) ===
 webPush.setVapidDetails(
   process.env.VAPID_MAILTO,
@@ -244,22 +262,6 @@ const PrivateMessage = mongoose.model('PrivateMessage', PrivateMessageSchema);
 // Do usernames se hamesha same, consistent "room id" banane ke liye
 // (taaki A->B aur B->A dono same room mein milein)
 const getPrivateRoomId = (userA, userB) => [userA, userB].sort().join("__");
-
-// === AUTH MIDDLEWARE (JWT verify) ===
-const authMiddleware = (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return res.status(401).json({ message: "No token provided" });
-    }
-    const token = authHeader.split(" ")[1];
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = decoded; // { id, username }
-        next();
-    } catch (err) {
-        return res.status(401).json({ message: "Invalid or expired token" });
-    }
-};
 
 // === MULTER + CLOUDINARY (study material file uploads) ===
 // Disk storage ki jagah ab seedha Cloudinary par upload hota hai.
