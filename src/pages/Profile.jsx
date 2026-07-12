@@ -131,9 +131,13 @@ export const Profile = () => {
         </button>
 
         <GlowCard className="p-6 mb-6">
-          <div className="flex items-start justify-between gap-4 mb-6">
-            <div className="flex items-center gap-4">
-              <div className="relative">
+          {/* === 🛑 FIX: chhoti/mobile screen pe ye row overflow ho ke bahar nikal raha
+              tha (Edit/Cancel/Save buttons avatar+email ke saath side-by-side fit
+              nahi ho paate the). Ab "sm" se neeche stack ho jata hai — upar
+              avatar+naam, neeche buttons apni poori width lete hain. */}
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="relative shrink-0">
                 <img
                   src={
                     (editing ? form.profilePic : profile?.profilePic) ||
@@ -153,14 +157,14 @@ export const Profile = () => {
                   </label>
                 )}
               </div>
-              <div>
-                <h1 className="text-lg font-semibold">{profile?.username || username}</h1>
-                <p className="text-xs flex items-center gap-1.5 mt-1" style={{ color: "var(--text-muted)" }}>
-                  <Mail size={12} /> {profile?.email}
+              <div className="min-w-0">
+                <h1 className="text-lg font-semibold truncate">{profile?.username || username}</h1>
+                <p className="text-xs flex items-center gap-1.5 mt-1 truncate" style={{ color: "var(--text-muted)" }}>
+                  <Mail size={12} className="shrink-0" /> <span className="truncate">{profile?.email}</span>
                 </p>
                 {profile?.mobile && (
                   <p className="text-xs flex items-center gap-1.5 mt-1" style={{ color: "var(--text-muted)" }}>
-                    <Phone size={12} /> {profile.mobile}
+                    <Phone size={12} className="shrink-0" /> {profile.mobile}
                   </p>
                 )}
               </div>
@@ -169,17 +173,17 @@ export const Profile = () => {
             {!editing ? (
               <button
                 onClick={() => setEditing(true)}
-                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg shrink-0"
+                className="flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg shrink-0 self-start"
                 style={{ background: "var(--surface-2)", color: "var(--text-main)" }}
               >
                 <Pencil size={14} /> Edit
               </button>
             ) : (
-              <div className="flex gap-2 shrink-0">
+              <div className="flex gap-2 shrink-0 w-full sm:w-auto">
                 <button
                   onClick={handleCancel}
                   disabled={saving}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg"
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg"
                   style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
                 >
                   <X size={14} /> Cancel
@@ -187,7 +191,7 @@ export const Profile = () => {
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg disabled:opacity-60"
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg disabled:opacity-60"
                   style={{ background: "var(--accent-1)", color: "var(--bg-base)" }}
                 >
                   {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
