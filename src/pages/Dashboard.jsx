@@ -35,6 +35,7 @@ import {
   Pencil,
   MapPinned,
   Info,
+  Bot,
 } from "lucide-react";
 
 const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000");
@@ -234,6 +235,21 @@ export const Dashboard = () => {
                   <span className="hidden md:block text-sm font-medium">{label}</span>
                 </button>
               ))}
+
+              {/* === 🛑 NAYA: "Campus AI" — sirf desktop sidebar (md aur upar) pe.
+                  Floating button mobile ke liye reserve hai, ye button wahi AI panel
+                  ek custom "toggle-ai-assistant" event ke through open karta hai
+                  (AIAssistant.jsx globally App.jsx se render hota hai). */}
+              <button
+                onClick={() => window.dispatchEvent(new Event("toggle-ai-assistant"))}
+                className="flex items-center gap-4 w-full p-3 rounded-xl transition"
+                style={{ color: "var(--text-muted)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                <Bot size={19} strokeWidth={1.8} />
+                <span className="hidden md:block text-sm font-medium">Campus AI</span>
+              </button>
 
               <button
                 onClick={() => setShowModal(true)}
