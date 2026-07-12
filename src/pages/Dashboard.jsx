@@ -162,9 +162,16 @@ export const Dashboard = () => {
     if (file) {
       if (file.size > 5000000) { alert("Profile photo 5MB se badi hai!"); return; }
       const reader = new FileReader();
-      reader.onloadend = () => {
-        try { setProfilePic(reader.result); localStorage.setItem("profilePic", reader.result); }
-        catch (err) { alert("Storage limit full ho gayi hai!"); }
+      reader.onloadend = async () => {
+        try {
+          setProfilePic(reader.result);
+          localStorage.setItem("profilePic", reader.result);
+          // Ab backend/database mein bhi save karte hain, taaki naye posts pe
+          // aur dusre users ko bhi sahi profile photo dikhe (sirf apne browser
+          // ke localStorage mein hi na reh jaaye)
+          await api.put(`/api/users/${username}`, { profilePic: reader.result });
+        }
+        catch (err) { alert("Photo save nahi ho payi, dobara try karo."); }
       };
       reader.readAsDataURL(file);
     }
