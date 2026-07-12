@@ -4,6 +4,7 @@
 //  - API calls (/api/*) -> network-first, NEVER cached long-term, so live data (posts,
 //    stats, chat) always stays fresh. Existing data flow is untouched.
 //  - Navigation requests that fail offline -> fall back to /offline.html
+//  - Push notifications -> show system notification + handle click (NAYA)
 
 const CACHE_VERSION = "campus-connect-v1";
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
@@ -96,4 +97,38 @@ self.addEventListener("message", (event) => {
   if (event.data === "SKIP_WAITING") {
     self.skipWaiting();
   }
+});
+
+// === 🛑 NAYA: PUSH NOTIFICATION AANE PE SYSTEM NOTIFICATION DIKHANA ===
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (err) {
+    data = { title: "Campus Connect", body: event.data ? event.data.text() : "" };
+  }
+
+  const title = data.title || "Campus Connect";
+  const options = {
+    body: data.body || "",
+    icon: data.icon || "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    data: data.data || {},
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// === 🛑 NAYA: NOTIFICATION PE CLICK KARNE PE APP/TAB khol dena ===
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url === url && "focus" in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(url);
+    })
+  );
 });

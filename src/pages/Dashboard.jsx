@@ -10,6 +10,7 @@ import { TrendingSidebar } from "../components/TrendingSidebar";
 import { PostComposer } from "../components/PostComposer";
 import { PostCard } from "../components/PostCard";
 import { StudentsModal } from "../components/StudentsModal";
+import { subscribeToPush } from "../utils/pushNotifications";
 import {
   Building2,
   MessageCircle,
@@ -85,6 +86,7 @@ export const Dashboard = () => {
   useEffect(() => {
     fetchPosts();
     fetchStats();
+    subscribeToPush(); // NAYA — login/dashboard load hote hi push ke liye subscribe karo
     socket.on("receive-notification", (data) => { alert(data.text); });
     return () => socket.off("receive-notification");
   }, []);

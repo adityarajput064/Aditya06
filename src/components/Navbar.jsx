@@ -1,12 +1,19 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { io } from "socket.io-client";
 import { Search, MessageCircle, Bell, Moon, Sun, User, LogOut } from "lucide-react";
+import api from "../utils/api";
 
-const DUMMY_NOTIFICATIONS = [
-  { id: 1, text: "Mid-1 Exam schedule released", time: "2h ago" },
-  { id: 2, text: "New reply on your doubt post", time: "5h ago" },
-  { id: 3, text: "Workshop practical submission due tomorrow", time: "1d ago" },
-];
+const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000");
+
+// Notification ke time ko "5m pehle", "2h pehle" jaisa dikhane ke liye
+const timeAgo = (date) => {
+  const diff = Math.floor((Date.now() - new Date(date)) / 1000);
+  if (diff < 60) return "abhi";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m pehle`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h pehle`;
+  return `${Math.floor(diff / 86400)}d pehle`;
+};
 
 export const Navbar = ({ username, profilePic }) => {
   const navigate = useNavigate();
@@ -14,9 +21,12 @@ export const Navbar = ({ username, profilePic }) => {
   const [showNotifs, setShowNotifs] = useState(false);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark");
+  const [notifications, setNotifications] = useState([]);
 
   const notifRef = useRef(null);
   const avatarRef = useRef(null);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   // Theme ko <html> tag pe apply karte hain taaki CSS variables switch ho sakein
   useEffect(() => {
@@ -33,6 +43,37 @@ export const Navbar = ({ username, profilePic }) => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // === NAYA: Notifications fetch karo + real-time updates ke liye socket room join karo ===
+  useEffect(() => {
+    if (!username || username === "Guest") return;
+
+    fetchNotifications();
+
+    socket.emit("register-user", username);
+    socket.on("new-notification", (notif) => {
+      setNotifications((prev) => [notif, ...prev]);
+    });
+
+    return () => socket.off("new-notification");
+  }, [username]);
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await api.get("/api/notifications");
+      setNotifications(res.data);
+    } catch (err) { console.error(err); }
+  };
+
+  // Bell khulte hi saari notifications ko "read" mark kar do
+  const handleBellClick = async () => {
+    const opening = !showNotifs;
+    setShowNotifs(opening);
+    if (opening && unreadCount > 0) {
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      try { await api.put("/api/notifications/read"); } catch (err) { console.error(err); }
+    }
+  };
 
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
 
@@ -67,42 +108,51 @@ export const Navbar = ({ username, profilePic }) => {
         {/* Notifications */}
         <div className="relative" ref={notifRef}>
           <button
-            onClick={() => setShowNotifs((s) => !s)}
+            onClick={handleBellClick}
             className="relative w-10 h-10 rounded-xl flex items-center justify-center hover:bg-[var(--surface-2)] transition"
             title="Notifications"
           >
             <Bell size={19} strokeWidth={1.8} style={{ color: "var(--text-main)" }} />
-            {DUMMY_NOTIFICATIONS.length > 0 && (
+            {unreadCount > 0 && (
               <span
                 className="absolute top-1 right-1 w-4 h-4 text-[10px] font-bold rounded-full flex items-center justify-center"
                 style={{ background: "var(--accent-1)", color: "var(--bg-base)" }}
               >
-                {DUMMY_NOTIFICATIONS.length}
+                {unreadCount}
               </span>
             )}
           </button>
 
           {showNotifs && (
             <div
-              className="absolute right-0 mt-2 w-72 navbar-glass rounded-xl shadow-2xl overflow-hidden border"
+              className="absolute right-0 mt-2 w-72 navbar-glass rounded-xl shadow-2xl overflow-hidden border max-h-96 overflow-y-auto"
               style={{ borderColor: "var(--border-subtle)" }}
             >
               <div
-                className="px-4 py-3 font-semibold text-sm border-b"
-                style={{ borderColor: "var(--border-subtle)" }}
+                className="px-4 py-3 font-semibold text-sm border-b sticky top-0"
+                style={{ borderColor: "var(--border-subtle)", background: "var(--surface-1)" }}
               >
                 Notifications
               </div>
-              {DUMMY_NOTIFICATIONS.map((n) => (
-                <div
-                  key={n.id}
-                  className="px-4 py-3 text-sm hover:bg-[var(--surface-2)] transition border-b last:border-0"
-                  style={{ borderColor: "var(--border-subtle)" }}
-                >
-                  <p>{n.text}</p>
-                  <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>{n.time}</p>
+              {notifications.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-center" style={{ color: "var(--text-muted)" }}>
+                  Koi notification nahi hai
                 </div>
-              ))}
+              ) : (
+                notifications.map((n) => (
+                  <div
+                    key={n._id}
+                    className="px-4 py-3 text-sm hover:bg-[var(--surface-2)] transition border-b last:border-0"
+                    style={{
+                      borderColor: "var(--border-subtle)",
+                      background: n.read ? "transparent" : "color-mix(in srgb, var(--accent-1) 8%, transparent)",
+                    }}
+                  >
+                    <p>{n.text}</p>
+                    <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>{timeAgo(n.createdAt)}</p>
+                  </div>
+                ))
+              )}
             </div>
           )}
         </div>

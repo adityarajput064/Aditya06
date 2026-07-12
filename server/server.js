@@ -7,7 +7,7 @@ const http = require('http');
 const path = require('path');
 const multer = require('multer');
 const { Server } = require('socket.io');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcryptjs'A;
 const jwt = require('jsonwebtoken');
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
@@ -57,8 +57,8 @@ const UserSchema = new mongoose.Schema({
     institute: { type: String, default: "" },
     enrollmentNumber: { type: String, default: "" },
     skills: { type: String, default: "" },
-    followers: [{ type: String }],   // 👈 NAYA — jo isko follow karte hain (usernames)
-    following: [{ type: String }],   // 👈 NAYA — jinko ye follow karta hai (usernames)
+    followers: [{ type: String }],   // jo isko follow karte hain (usernames)
+    following: [{ type: String }],   // jinko ye follow karta hai (usernames)
     privacy: {
         showEmail: { type: Boolean, default: true },
         showMobile: { type: Boolean, default: false }
@@ -67,7 +67,10 @@ const UserSchema = new mongoose.Schema({
 const User = mongoose.model('User', UserSchema);
 
 // === 🛑 NAYA SUBSCRIBER SCHEMA (Push Notifications ke liye) ===
+// NAYA: ab har subscription ek username se bhi linked hai, taaki
+// push sirf uss specific user ko bheji ja sake (broadcast nahi)
 const subscriberSchema = new mongoose.Schema({
+  username: { type: String, required: true },
   endpoint: { type: String, required: true, unique: true },
   expirationTime: { type: Date, default: null },
   keys: {
@@ -78,16 +81,29 @@ const subscriberSchema = new mongoose.Schema({
 const Subscriber = mongoose.model('Subscriber', subscriberSchema);
 // ===============================================================
 
+// === 🛑 NAYA NOTIFICATION SCHEMA (in-app bell + push history ke liye) ===
+const NotificationSchema = new mongoose.Schema({
+    toUsername: { type: String, required: true },     // kisko notification milegi
+    fromUsername: { type: String, required: true },   // kisne trigger kiya
+    type: { type: String, enum: ['follow', 'like', 'comment', 'post'], required: true },
+    text: { type: String, required: true },            // display text
+    postId: { type: mongoose.Schema.Types.ObjectId, ref: 'Post', default: null },
+    read: { type: Boolean, default: false },
+}, { timestamps: true });
+const Notification = mongoose.model('Notification', NotificationSchema);
+// ===============================================================
+
 
 // === 🛑 NAYA SUBSCRIBE ROUTE & NOTICE HELPER FUNCTION ===
 // Iske thik niche se tere baaki ke routes shuru honge
 
 // Frontend se push subscription save karne ka route
-app.post('/api/subscribe', async (req, res) => {
+// NAYA: ab authMiddleware lagi hai, taaki username subscription se linked ho sake
+app.post('/api/subscribe', authMiddleware, async (req, res) => {
   try {
     await Subscriber.findOneAndUpdate(
       { endpoint: req.body.endpoint },
-      req.body,
+      { ...req.body, username: req.user.username },
       { upsert: true, new: true }
     );
     res.status(200).json({ success: true, message: "Subscription Saved!" });
@@ -97,7 +113,7 @@ app.post('/api/subscribe', async (req, res) => {
   }
 });
 
-// Admin/System se sabko notice bhejne ka helper function
+// Admin/System se sabko notice bhejne ka helper function (jaisa tha waisa hi rakha hai)
 async function sendNoticeToAll(title, message, url) {
   const allSubscribers = await Subscriber.find({});
   const payload = JSON.stringify({
@@ -118,6 +134,41 @@ async function sendNoticeToAll(title, message, url) {
       }
     }
   });
+}
+
+// === 🛑 NAYA: SIRF EK USER KO PUSH BHEJNE KA HELPER ===
+async function sendPushToUser(username, text) {
+  try {
+    const subs = await Subscriber.find({ username });
+    const payload = JSON.stringify({
+      title: "Campus Connect",
+      body: text,
+      icon: "/icons/icon-192.png",
+      data: { url: "https://campus-connect.vercel.app/dashboard" }
+    });
+
+    subs.forEach(async (sub) => {
+      try {
+        await webPush.sendNotification(sub, payload);
+      } catch (error) {
+        if (error.statusCode === 410 || error.statusCode === 404) {
+          await Subscriber.deleteOne({ _id: sub._id });
+        }
+      }
+    });
+  } catch (err) { console.error("Push to user failed:", err.message); }
+}
+
+// === 🛑 NAYA: NOTIFICATION BANANE + BHEJNE KA MAIN HELPER ===
+// DB mein save karta hai, real-time socket se bell icon update karta hai,
+// aur phone pe push bhi bhejta hai — teeno ek hi jagah se
+async function notifyUser(toUsername, fromUsername, type, text, postId = null) {
+  if (toUsername === fromUsername) return; // khud ko notification nahi
+  try {
+    const notif = await new Notification({ toUsername, fromUsername, type, text, postId }).save();
+    io.to(toUsername).emit('new-notification', notif);
+    await sendPushToUser(toUsername, text);
+  } catch (err) { console.error("Notify failed:", err.message); }
 }
 // ===============================================================
 
@@ -229,6 +280,12 @@ const upload = multer({
 
 io.on('connection', (socket) => {
     socket.on('send-reply', (data) => { io.emit('receive-notification', data); });
+
+    // === 🛑 NAYA: HAR USER APNE PERSONAL ROOM MEIN JOIN HOTA HAI ===
+    // Isse notifyUser() sirf usi user ko real-time notification bhej payega
+    socket.on('register-user', (username) => {
+        if (username) socket.join(username);
+    });
 
     // === GROUP CHAT (Discuss Room) ===
     socket.on('send-group-msg', async (data) => {
@@ -370,6 +427,11 @@ app.put('/api/users/:username/follow', authMiddleware, async (req, res) => {
         await targetUser.save();
         await meUser.save();
 
+        // NAYA — sirf naye follow pe notification (unfollow pe nahi)
+        if (!alreadyFollowing) {
+            await notifyUser(targetUsername, myUsername, 'follow', `${myUsername} ne aapko follow kiya`);
+        }
+
         res.json({
             following: !alreadyFollowing,
             followersCount: targetUser.followers.length
@@ -395,6 +457,14 @@ app.post('/api/posts', authMiddleware, async (req, res) => {
         const user = await User.findOne({ username: req.user.username });
         const newPost = new Post({ ...req.body, username: req.user.username, profilePic: user?.profilePic || "" });
         await newPost.save();
+
+        // NAYA — apne saare followers ko notify karo ki naya post aaya hai
+        if (user?.followers?.length) {
+            user.followers.forEach((followerUsername) => {
+                notifyUser(followerUsername, req.user.username, 'post', `${req.user.username} ne naya post kiya`, newPost._id);
+            });
+        }
+
         res.json(newPost);
     } catch (err) { res.status(500).json(err); }
 });
@@ -413,6 +483,12 @@ app.put('/api/posts/:id/like', authMiddleware, async (req, res) => {
             post.likes += 1;
         }
         await post.save();
+
+        // NAYA — sirf naye like pe notification (unlike pe nahi)
+        if (!alreadyLiked) {
+            await notifyUser(post.username, username, 'like', `${username} ne aapki post like ki`, post._id);
+        }
+
         res.json(post);
     } catch (err) { res.status(500).json(err); }
 });
@@ -470,6 +546,10 @@ app.post('/api/posts/:id/reply', authMiddleware, async (req, res) => {
         post.comments.push({ username: req.user.username, text: req.body.text });
         await post.save();
         io.emit('send-reply', { text: "Naya reply aaya hai!" });
+
+        // NAYA — post owner ko comment ki notification
+        await notifyUser(post.username, req.user.username, 'comment', `${req.user.username} ne aapki post pe comment kiya`, post._id);
+
         res.json(post);
     } catch (err) { res.status(500).json(err); }
 });
@@ -594,6 +674,26 @@ app.get('/api/messages/private/:otherUsername', authMiddleware, async (req, res)
             ]
         }).sort({ createdAt: 1 });
         res.json(messages);
+    } catch (err) { res.status(500).json(err); }
+});
+
+// === NOTIFICATIONS ROUTES (naye) ===
+app.get('/api/notifications', authMiddleware, async (req, res) => {
+    try {
+        const notifications = await Notification.find({ toUsername: req.user.username })
+            .sort({ createdAt: -1 })
+            .limit(50);
+        res.json(notifications);
+    } catch (err) { res.status(500).json(err); }
+});
+
+app.put('/api/notifications/read', authMiddleware, async (req, res) => {
+    try {
+        await Notification.updateMany(
+            { toUsername: req.user.username, read: false },
+            { $set: { read: true } }
+        );
+        res.json({ message: "Marked as read" });
     } catch (err) { res.status(500).json(err); }
 });
 
