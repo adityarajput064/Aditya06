@@ -35,13 +35,6 @@ export function AIAssistant() {
     return () => window.removeEventListener("storage", checkLogin);
   }, []);
 
-  // === 🛑 NAYA: Desktop left sidebar ke "Campus AI" button se panel toggle karne ke liye ===
-  useEffect(() => {
-    const handleToggle = () => setIsOpen((prev) => !prev);
-    window.addEventListener("toggle-ai-assistant", handleToggle);
-    return () => window.removeEventListener("toggle-ai-assistant", handleToggle);
-  }, []);
-
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping, isOpen]);
@@ -80,12 +73,12 @@ export function AIAssistant() {
 
   return (
     <>
-      {/* FLOATING BUTTON — ab sirf mobile pe (md:hidden), desktop pe iski jagah
-          left sidebar ka "Campus AI" nav item hai (Dashboard.jsx dekh) */}
+      {/* FLOATING BUTTON — chhota popup, har screen size pe dikhta hai.
+          Left sidebar ka "Campus AI" is se alag hai — wo poora page (/campus-ai) kholta hai. */}
       <button
         onClick={() => setIsOpen((prev) => !prev)}
         aria-label="AI Assistant"
-        className="md:hidden fixed bottom-6 right-5 z-50 w-14 h-14 rounded-full bg-cyan-600 hover:bg-cyan-500 shadow-lg shadow-cyan-900/50 flex items-center justify-center transition"
+        className="fixed bottom-6 right-5 z-50 w-14 h-14 rounded-full bg-cyan-600 hover:bg-cyan-500 shadow-lg shadow-cyan-900/50 flex items-center justify-center transition"
         style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
       >
         {isOpen ? <X size={24} className="text-white" /> : <Bot size={26} className="text-white" />}

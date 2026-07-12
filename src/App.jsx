@@ -8,6 +8,7 @@ import { StudyMaterials } from "./pages/StudyMaterials";
 import { NoticeBoard } from "./pages/NoticeBoard";
 import { ClubDetail } from "./pages/ClubDetail";
 import { AboutApp } from "./pages/AboutApp";
+import { CampusAI } from "./pages/CampusAI";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AIAssistant } from "./components/AIAssistant";
 
@@ -26,6 +27,7 @@ function App() {
         <Route path="/study-materials" element={<ProtectedRoute><StudyMaterials /></ProtectedRoute>} />
         <Route path="/notice-board" element={<ProtectedRoute><NoticeBoard /></ProtectedRoute>} />
         <Route path="/club/:slug" element={<ProtectedRoute><ClubDetail /></ProtectedRoute>} />
+        <Route path="/campus-ai" element={<ProtectedRoute><CampusAI /></ProtectedRoute>} />
       </Routes>
 
       {/* NAYA — poore app mein globally floating rehta hai, khud check karta hai login hai ya nahi */}

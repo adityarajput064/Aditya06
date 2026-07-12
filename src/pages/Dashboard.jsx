@@ -237,11 +237,10 @@ export const Dashboard = () => {
               ))}
 
               {/* === 🛑 NAYA: "Campus AI" — sirf desktop sidebar (md aur upar) pe.
-                  Floating button mobile ke liye reserve hai, ye button wahi AI panel
-                  ek custom "toggle-ai-assistant" event ke through open karta hai
-                  (AIAssistant.jsx globally App.jsx se render hota hai). */}
+                  Chhota floating button (bottom-right) popup kholta hai, ye button
+                  poora alag page kholta hai (/campus-ai route — App.jsx dekh). */}
               <button
-                onClick={() => window.dispatchEvent(new Event("toggle-ai-assistant"))}
+                onClick={() => navigate("/campus-ai")}
                 className="flex items-center gap-4 w-full p-3 rounded-xl transition"
                 style={{ color: "var(--text-muted)" }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
