@@ -206,23 +206,18 @@ export const Dashboard = () => {
 
       <div className="flex items-start">
 
-        {/* SIDEBAR */}
+        {/* SIDEBAR — ab sirf tablet/desktop (md aur upar) pe dikhta hai. Mobile pe iski jagah
+            neeche ek Instagram-jaisa bottom tab bar hai (niche dekh <BottomNav />). */}
         <div
-          className="w-20 md:w-64 h-[calc(100vh-4rem)] sticky top-16 border-r py-8 px-4 flex flex-col justify-between z-10 glass"
+          className="hidden md:flex md:w-64 h-[calc(100vh-4rem)] sticky top-16 border-r py-8 px-4 flex-col justify-between z-10 glass"
           style={{ borderColor: "var(--border-subtle)" }}
         >
           <div>
             <h1
-              className="hidden md:block text-xl font-semibold mb-10 tracking-wide"
+              className="text-xl font-semibold mb-10 tracking-wide"
               style={{ color: "var(--accent-1)" }}
             >
               Campus Connect
-            </h1>
-            <h1
-              className="md:hidden text-xl font-semibold mb-10 text-center"
-              style={{ color: "var(--accent-1)" }}
-            >
-              CC
             </h1>
 
             <div className="space-y-1">
@@ -281,15 +276,15 @@ export const Dashboard = () => {
         </div>
 
         {/* FEED */}
-        <div className="flex-1 max-w-2xl mx-auto w-full py-8 px-4 z-10 overflow-y-auto">
+        <div className="flex-1 max-w-2xl mx-auto w-full pt-6 md:pt-8 px-4 pb-24 md:pb-8 z-10 overflow-y-auto">
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <button onClick={() => setShowStudentsModal(true)} className="text-left">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-6">
+            <button onClick={() => setShowStudentsModal(true)} className="text-left min-w-0">
               <StatCard icon={<GraduationCap size={18} />} label="Students" value={stats.students} />
             </button>
-            <StatCard icon={<FileText size={18} />} label="Notes" value={stats.notes} />
-            <StatCard icon={<Megaphone size={18} />} label="Notices" value={stats.notices} />
-            <StatCard icon={<PartyPopper size={18} />} label="Events" value={stats.events} />
+            <div className="min-w-0"><StatCard icon={<FileText size={18} />} label="Notes" value={stats.notes} /></div>
+            <div className="min-w-0"><StatCard icon={<Megaphone size={18} />} label="Notices" value={stats.notices} /></div>
+            <div className="min-w-0"><StatCard icon={<PartyPopper size={18} />} label="Events" value={stats.events} /></div>
           </div>
 
           <h3
@@ -446,6 +441,59 @@ export const Dashboard = () => {
           </div>
         </div>
 
+      </div>
+
+      {/* === 🛑 NAYA: MOBILE BOTTOM NAV (Instagram-style) ===
+          Sirf mobile pe dikhta hai (md:hidden), desktop pe left sidebar hi kaam karti hai.
+          Fixed hone ki wajah se scroll ke saath nahi hilta, safe-area-inset se notch/gesture-bar
+          wale phones pe bhi content uske peeche nahi chhupta. */}
+      <div
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around glass border-t"
+        style={{
+          borderColor: "var(--border-subtle)",
+          background: "var(--surface-1)",
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        }}
+      >
+        {NAV_ITEMS.map(({ key, label, icon: Icon, path }) => (
+          <button
+            key={key}
+            onClick={() => (path ? navigate(path) : window.scrollTo({ top: 0, behavior: "smooth" }))}
+            aria-label={label}
+            className="flex flex-col items-center justify-center flex-1 py-2.5"
+            style={{ color: "var(--text-muted)", minHeight: "56px" }}
+          >
+            <Icon size={24} strokeWidth={1.8} />
+          </button>
+        ))}
+
+        <button
+          onClick={() => setShowModal(true)}
+          aria-label="Share Update"
+          className="flex flex-col items-center justify-center flex-1 py-2.5"
+          style={{ color: "var(--accent-1)", minHeight: "56px" }}
+        >
+          <div
+            className="w-8 h-8 rounded-xl flex items-center justify-center"
+            style={{ background: "color-mix(in srgb, var(--accent-1) 16%, transparent)" }}
+          >
+            <Plus size={20} strokeWidth={2.2} />
+          </div>
+        </button>
+
+        <button
+          onClick={() => navigate("/profile")}
+          aria-label="Profile"
+          className="flex flex-col items-center justify-center flex-1 py-2.5"
+          style={{ color: "var(--text-muted)", minHeight: "56px" }}
+        >
+          <img
+            src={profilePic || `https://ui-avatars.com/api/?name=${username}&background=00E5FF&color=111`}
+            className="w-7 h-7 rounded-full object-cover"
+            style={{ border: "1.5px solid var(--border-subtle)" }}
+            alt="Profile"
+          />
+        </button>
       </div>
 
       {showModal && (

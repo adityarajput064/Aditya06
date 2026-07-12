@@ -3,6 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <style>
+      /* NAYA — safety net: koi bhi component agar galti se viewport se
+         chauda ho jaye, to horizontal scroll/zoom ki jagah bas clip ho jayega */
+      html, body { overflow-x: hidden; max-width: 100vw; }
+    </style>
 
     <!-- PWA -->
     <link rel="manifest" href="./manifest.json" />
