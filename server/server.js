@@ -11,6 +11,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const nodemailer = require('nodemailer'); // NAYA — OTP email bhejne ke liye
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -53,6 +54,16 @@ cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// === 🛑 NAYA: EMAIL TRANSPORTER (Gmail SMTP — free, OTP bhejne ke liye) ===
+// EMAIL_USER = teri Gmail id, EMAIL_PASS = Gmail "App Password" (normal password nahi chalega)
+const emailTransporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+    },
 });
 
 const server = http.createServer(app);
@@ -109,6 +120,16 @@ const NotificationSchema = new mongoose.Schema({
     read: { type: Boolean, default: false },
 }, { timestamps: true });
 const Notification = mongoose.model('Notification', NotificationSchema);
+// ===============================================================
+
+// === 🛑 NAYA: OTP SCHEMA (email login ke liye) ===
+// 5 minute (300 sec) baad khud expire ho jata hai — TTL index
+const OtpSchema = new mongoose.Schema({
+    email: { type: String, required: true },
+    otp: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now, expires: 300 }
+});
+const Otp = mongoose.model('Otp', OtpSchema);
 // ===============================================================
 
 
@@ -372,12 +393,81 @@ io.on('connection', (socket) => {
     });
 });
 
+// === 🛑 NAYA: DISPOSABLE / TEMP EMAIL BLOCKLIST ===
+// Ye sab known temp-mail services hain — inse signup allow nahi karte
+const DISPOSABLE_EMAIL_DOMAINS = new Set([
+    "mailinator.com", "tempmail.com", "temp-mail.org", "10minutemail.com",
+    "guerrillamail.com", "guerrillamail.info", "yopmail.com", "throwawaymail.com",
+    "fakeinbox.com", "trashmail.com", "sharklasers.com", "discard.email",
+    "dispostable.com", "maildrop.cc", "getnada.com", "moakt.com", "mintemail.com",
+    "mohmal.com", "emailondeck.com", "33mail.com", "spamgourmet.com",
+    "mailnesia.com", "mailcatch.com", "tempinbox.com", "burnermail.io",
+    "getairmail.com", "tempr.email", "tmpmail.net", "tmpmail.org",
+    "10minemail.com", "mail-temp.com", "emailtemporario.com.br", "fakemailgenerator.com",
+]);
+
+function isDisposableEmail(email) {
+    const domain = email.split("@")[1]?.toLowerCase();
+    return domain ? DISPOSABLE_EMAIL_DOMAINS.has(domain) : true; // domain hi na mile to bhi block
+}
+
 // === AUTH ROUTES ===
+
+// === 🛑 NAYA: SIGNUP EMAIL VERIFICATION (OTP) ===
+// Step 1 — signup form submit karne se pehle email pe OTP bhejo
+app.post('/api/otp/send-signup', async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ message: "Email zaroori hai" });
+
+        if (isDisposableEmail(email)) {
+            return res.status(400).json({ message: "Temporary/disposable email allowed nahi hai. Apni real college/personal email use karo." });
+        }
+
+        const existing = await User.findOne({ email });
+        if (existing) {
+            return res.status(400).json({ message: "Is email se pehle se account bana hua hai" });
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+
+        await Otp.deleteMany({ email }); // purana OTP hata ke naya save karo
+        await new Otp({ email, otp }).save();
+
+        await emailTransporter.sendMail({
+            from: `"Campus Connect" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: "Campus Connect — Email Verify Karo",
+            html: `<div style="font-family:sans-serif;padding:20px;">
+                <h2 style="color:#00E5FF;">Campus Connect</h2>
+                <p>Apni email verify karne ke liye ye OTP daalo:</p>
+                <h1 style="letter-spacing:6px;">${otp}</h1>
+                <p style="color:#888;font-size:13px;">Ye OTP 5 minute mein expire ho jayega. Agar tune signup nahi kiya, to ignore kar do.</p>
+            </div>`,
+        });
+
+        res.json({ message: "OTP bhej diya gaya hai" });
+    } catch (err) {
+        console.error("Signup OTP send failed:", err.message);
+        res.status(500).json({ message: "OTP bhejne mein error aaya, dobara try karo" });
+    }
+});
+
+// Step 2 — OTP + baaki details ek saath bhejo, tabhi account banega
 app.post('/api/signup', async (req, res) => {
     try {
-        const { username, email, mobile, password } = req.body;
-        if (!username || !email || !password) {
-            return res.status(400).json({ message: "Username, email, and password are required" });
+        const { username, email, mobile, password, otp } = req.body;
+        if (!username || !email || !password || !otp) {
+            return res.status(400).json({ message: "Username, email, password, aur OTP — sab zaroori hain" });
+        }
+
+        if (isDisposableEmail(email)) {
+            return res.status(400).json({ message: "Temporary/disposable email allowed nahi hai" });
+        }
+
+        const otpRecord = await Otp.findOne({ email, otp });
+        if (!otpRecord) {
+            return res.status(400).json({ message: "OTP galat hai ya expire ho gaya, dobara bhejo" });
         }
 
         const existing = await User.findOne({ $or: [{ username }, { email }] });
@@ -388,6 +478,8 @@ app.post('/api/signup', async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         const newUser = new User({ username, email, mobile, password: hashedPassword });
         await newUser.save();
+        await Otp.deleteMany({ email }); // use ho gaya, ab hata do
+
         res.json({ message: "Signup Success" });
     } catch (err) {
         res.status(500).json({ message: "Signup failed", error: err.message });
@@ -425,6 +517,7 @@ app.post('/api/login', async (req, res) => {
         res.status(500).json({ message: "Login failed", error: err.message });
     }
 });
+
 
 // === PROFILE ROUTES (ab protected, JWT chahiye) ===
 app.get('/api/users/:username', async (req, res) => {
