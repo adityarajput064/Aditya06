@@ -1,11 +1,20 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
+import { Smile } from "lucide-react";
 import api from "../utils/api";
 
 const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000");
 const GROUP_MESSAGE_LIFETIME_MS = 30000; // 30 seconds
 const TYPING_STOP_DELAY_MS = 1500; // itni der chup rehne pe "typing" hat jayega
+
+// === 🛑 NAYA: EMOJI LIST (koi external library nahi, curated list) ===
+const EMOJI_LIST = [
+  "😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😎", "🤩", "🥳",
+  "😢", "😭", "😡", "🤔", "😴", "🥺", "😅", "🙄", "😬", "🤯",
+  "👍", "👎", "👏", "🙌", "🙏", "💪", "🤝", "✌️", "🤞", "👋",
+  "❤️", "🔥", "💯", "🎉", "✅", "❌", "⭐", "💡", "📚", "🎯",
+];
 
 export const Chat = () => {
   const navigate = useNavigate();
@@ -35,6 +44,26 @@ export const Chat = () => {
   const otherTypingTimersRef = useRef({}); // group: har typing user ka apna auto-clear timer
 
   const chatEndRef = useRef(null);
+
+  // === 🛑 NAYA: EMOJI PICKER STATE ===
+  const [showGroupEmoji, setShowGroupEmoji] = useState(false);
+  const [showPrivateEmoji, setShowPrivateEmoji] = useState(false);
+  const groupEmojiRef = useRef(null);
+  const privateEmojiRef = useRef(null);
+
+  // NAYA — bahar click karne pe emoji picker band ho jaye
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (groupEmojiRef.current && !groupEmojiRef.current.contains(e.target)) {
+        setShowGroupEmoji(false);
+      }
+      if (privateEmojiRef.current && !privateEmojiRef.current.contains(e.target)) {
+        setShowPrivateEmoji(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -204,6 +233,22 @@ export const Chat = () => {
 
   const isUserOnline = (uname) => onlineUsernames.includes(uname);
 
+  // === 🛑 NAYA: EMOJI PICKER POPUP (reusable) ===
+  const EmojiPicker = ({ onSelect }) => (
+    <div className="absolute bottom-14 right-0 z-20 bg-[#1a1a1a] border border-gray-700 rounded-xl p-3 shadow-xl w-64 grid grid-cols-8 gap-1">
+      {EMOJI_LIST.map((emoji) => (
+        <button
+          key={emoji}
+          type="button"
+          onClick={() => onSelect(emoji)}
+          className="text-xl hover:bg-gray-800 rounded-lg p-1 transition"
+        >
+          {emoji}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[#050505] text-white p-6 flex flex-col">
       <button onClick={() => navigate("/dashboard")} className="text-cyan-400 mb-4 self-start">← Back</button>
@@ -256,7 +301,7 @@ export const Chat = () => {
                 )}
               </div>
 
-              <div className="mt-1 flex gap-2">
+              <div className="mt-1 flex gap-2 relative" ref={groupEmojiRef}>
                 <input
                   className="w-full bg-gray-800 p-3 rounded-lg outline-none"
                   value={groupMsg}
@@ -264,6 +309,18 @@ export const Chat = () => {
                   onKeyDown={(e) => e.key === "Enter" && sendGroupMessage()}
                   placeholder="Sabko message bhejo..."
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowGroupEmoji((prev) => !prev)}
+                  className="bg-gray-800 px-4 rounded-lg hover:bg-gray-700 transition"
+                >
+                  <Smile size={20} className="text-yellow-400" />
+                </button>
+                {showGroupEmoji && (
+                  <EmojiPicker
+                    onSelect={(emoji) => handleGroupInputChange({ target: { value: groupMsg + emoji } })}
+                  />
+                )}
                 <button onClick={sendGroupMessage} className="bg-cyan-600 px-6 rounded-lg font-bold">Send</button>
               </div>
             </div>
@@ -348,7 +405,7 @@ export const Chat = () => {
                     {isOtherUserTyping && `${selectedUser.username} type kar raha hai...`}
                   </div>
 
-                  <div className="flex gap-2 p-3 bg-[#111111] rounded-b-2xl border border-gray-800 border-t-0">
+                  <div className="flex gap-2 p-3 bg-[#111111] rounded-b-2xl border border-gray-800 border-t-0 relative" ref={privateEmojiRef}>
                     <input
                       className="w-full bg-gray-800 p-3 rounded-lg outline-none"
                       value={privateMsg}
@@ -356,6 +413,18 @@ export const Chat = () => {
                       onKeyDown={(e) => e.key === "Enter" && sendPrivateMessage()}
                       placeholder={`${selectedUser.username} ko message bhejo...`}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPrivateEmoji((prev) => !prev)}
+                      className="bg-gray-800 px-4 rounded-lg hover:bg-gray-700 transition"
+                    >
+                      <Smile size={20} className="text-yellow-400" />
+                    </button>
+                    {showPrivateEmoji && (
+                      <EmojiPicker
+                        onSelect={(emoji) => handlePrivateInputChange({ target: { value: privateMsg + emoji } })}
+                      />
+                    )}
                     <button onClick={sendPrivateMessage} className="bg-cyan-600 px-6 rounded-lg font-bold">Send</button>
                   </div>
                 </>
