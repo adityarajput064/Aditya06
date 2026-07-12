@@ -438,7 +438,7 @@ export const Dashboard = () => {
             onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent-1)")}
             onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
           >
-            Campus Connect V1.0 <br /> Built by ADITECH
+            Campus Connect V1.0 <br /> Built by Aditya Rajput · ADITECH
           </button>
 
           <div className="mt-6">

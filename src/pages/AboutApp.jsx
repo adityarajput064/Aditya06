@@ -172,17 +172,38 @@ export function AboutApp() {
       <div style={styles.hero}>
         <div style={styles.logoCircle}>AT</div>
         <h1 style={styles.appName}>Campus Connect</h1>
-        <p style={styles.tagline}>Made with ❤️ by ADITECH</p>
+        <p style={styles.tagline}>Part of the ADITECH platform</p>
       </div>
 
-      {/* CREATOR / GROUP CREDITS */}
+      {/* CREATOR CREDITS */}
       <div style={styles.card}>
         <div style={styles.cardTitle}>Created By</div>
+        <div style={styles.creatorRow}>
+          <div style={styles.creatorAvatar}>AR</div>
+          <div>
+            <p style={styles.creatorName}>Aditya Rajput</p>
+            <p style={styles.creatorRole}>Design, Development & Deployment</p>
+          </div>
+        </div>
+      </div>
+
+      {/* PLATFORM */}
+      <div style={styles.card}>
+        <div style={styles.cardTitle}>Platform</div>
         <div style={styles.creatorRow}>
           <div style={styles.creatorAvatar}>AT</div>
           <div>
             <p style={styles.creatorName}>ADITECH</p>
-            <p style={styles.creatorRole}>Design, Development & Deployment</p>
+            <p style={styles.creatorRole}>
+              <a
+                href="https://aditechindia.vercel.app"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "#a5b4fc", textDecoration: "none" }}
+              >
+                aditechindia.vercel.app
+              </a>
+            </p>
           </div>
         </div>
       </div>
@@ -291,7 +312,7 @@ export function AboutApp() {
         </ol>
       </div>
 
-      <p style={styles.footer}>Campus Connect © {new Date().getFullYear()} — Built by ADITECH</p>
+      <p style={styles.footer}>Campus Connect © {new Date().getFullYear()} — Built by Aditya Rajput · ADITECH</p>
     </div>
   );
 }
