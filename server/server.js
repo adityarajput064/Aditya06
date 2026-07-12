@@ -518,6 +518,77 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
+// === 🛑 NAYA: FORGOT PASSWORD (OTP-based reset) ===
+// Step 1 — email daalo, agar account exist karta hai to OTP bhejo
+// (signup wale OTP se ulta — yahan user ka pehle se hona zaroori hai)
+app.post('/api/otp/send-reset', async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ message: "Email zaroori hai" });
+
+        const user = await User.findOne({ email });
+        // NOTE: jaanbujh kar "user nahi mila" wala alag error nahi de rahe —
+        // isse koi ye pata nahi laga sakta ki konsi email registered hai ya nahi.
+        if (!user) {
+            return res.json({ message: "Agar ye email registered hai, to OTP bhej diya gaya hai" });
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        await Otp.deleteMany({ email });
+        await new Otp({ email, otp }).save();
+
+        await emailTransporter.sendMail({
+            from: `"Campus Connect" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: "Campus Connect — Password Reset Karo",
+            html: `<div style="font-family:sans-serif;padding:20px;">
+                <h2 style="color:#00E5FF;">Campus Connect</h2>
+                <p>Apna password reset karne ke liye ye OTP daalo:</p>
+                <h1 style="letter-spacing:6px;">${otp}</h1>
+                <p style="color:#888;font-size:13px;">Ye OTP 5 minute mein expire ho jayega. Agar tune ye request nahi ki, to ignore kar do — tera password same rahega.</p>
+            </div>`,
+        });
+
+        res.json({ message: "Agar ye email registered hai, to OTP bhej diya gaya hai" });
+    } catch (err) {
+        console.error("Reset OTP send failed:", err.message);
+        res.status(500).json({ message: "OTP bhejne mein error aaya, dobara try karo" });
+    }
+});
+
+// Step 2 — OTP + naya password bhejo, verify ho ke password update ho jayega
+app.post('/api/reset-password', async (req, res) => {
+    try {
+        const { email, otp, newPassword } = req.body;
+        if (!email || !otp || !newPassword) {
+            return res.status(400).json({ message: "Email, OTP, aur naya password — sab zaroori hain" });
+        }
+        if (newPassword.length < 6) {
+            return res.status(400).json({ message: "Password kam se kam 6 characters ka hona chahiye" });
+        }
+
+        const otpRecord = await Otp.findOne({ email, otp });
+        if (!otpRecord) {
+            return res.status(400).json({ message: "OTP galat hai ya expire ho gaya, dobara bhejo" });
+        }
+
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(400).json({ message: "Account nahi mila" });
+        }
+
+        user.password = await bcrypt.hash(newPassword, 10);
+        await user.save();
+        await Otp.deleteMany({ email }); // use ho gaya, ab hata do
+
+        res.json({ message: "Password reset ho gaya, ab naye password se login karo" });
+    } catch (err) {
+        res.status(500).json({ message: "Password reset failed", error: err.message });
+    }
+});
+
+
 
 // === PROFILE ROUTES (ab protected, JWT chahiye) ===
 app.get('/api/users/:username', async (req, res) => {
