@@ -9,6 +9,7 @@ import { StatCard } from "../components/StatCard";
 import { TrendingSidebar } from "../components/TrendingSidebar";
 import { PostComposer } from "../components/PostComposer";
 import { PostCard } from "../components/PostCard";
+import { StudentsModal } from "../components/StudentsModal";
 import {
   Building2,
   MessageCircle,
@@ -69,6 +70,7 @@ export const Dashboard = () => {
   const [stats, setStats] = useState({ students: 0, notes: 0, notices: 0, events: 0 });
   const [showModal, setShowModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showStudentsModal, setShowStudentsModal] = useState(false);
 
   const [username, setUsername] = useState(localStorage.getItem("username") || "Guest");
   const [email, setEmail] = useState(localStorage.getItem("email") || "student@campus.edu");
@@ -266,7 +268,9 @@ export const Dashboard = () => {
         <div className="flex-1 max-w-2xl mx-auto w-full py-8 px-4 z-10 overflow-y-auto">
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <StatCard icon={<GraduationCap size={18} />} label="Students" value={stats.students} />
+            <button onClick={() => setShowStudentsModal(true)} className="text-left">
+              <StatCard icon={<GraduationCap size={18} />} label="Students" value={stats.students} />
+            </button>
             <StatCard icon={<FileText size={18} />} label="Notes" value={stats.notes} />
             <StatCard icon={<Megaphone size={18} />} label="Notices" value={stats.notices} />
             <StatCard icon={<PartyPopper size={18} />} label="Events" value={stats.events} />
@@ -499,6 +503,10 @@ export const Dashboard = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {showStudentsModal && (
+        <StudentsModal onClose={() => setShowStudentsModal(false)} />
       )}
     </div>
   );

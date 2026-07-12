@@ -57,6 +57,8 @@ const UserSchema = new mongoose.Schema({
     institute: { type: String, default: "" },
     enrollmentNumber: { type: String, default: "" },
     skills: { type: String, default: "" },
+    followers: [{ type: String }],   // 👈 NAYA — jo isko follow karte hain (usernames)
+    following: [{ type: String }],   // 👈 NAYA — jinko ye follow karta hai (usernames)
     privacy: {
         showEmail: { type: Boolean, default: true },
         showMobile: { type: Boolean, default: false }
@@ -341,6 +343,40 @@ app.put('/api/users/:username', authMiddleware, async (req, res) => {
     } catch (err) { res.status(500).json(err); }
 });
 
+// === FOLLOW / UNFOLLOW TOGGLE (naya) ===
+app.put('/api/users/:username/follow', authMiddleware, async (req, res) => {
+    try {
+        const targetUsername = req.params.username;
+        const myUsername = req.user.username;
+
+        if (targetUsername === myUsername) {
+            return res.status(400).json({ message: "Aap khud ko follow nahi kar sakte" });
+        }
+
+        const targetUser = await User.findOne({ username: targetUsername });
+        const meUser = await User.findOne({ username: myUsername });
+        if (!targetUser || !meUser) return res.status(404).json({ message: "User not found" });
+
+        const alreadyFollowing = targetUser.followers.includes(myUsername);
+
+        if (alreadyFollowing) {
+            targetUser.followers = targetUser.followers.filter((u) => u !== myUsername);
+            meUser.following = meUser.following.filter((u) => u !== targetUsername);
+        } else {
+            targetUser.followers.push(myUsername);
+            meUser.following.push(targetUsername);
+        }
+
+        await targetUser.save();
+        await meUser.save();
+
+        res.json({
+            following: !alreadyFollowing,
+            followersCount: targetUser.followers.length
+        });
+    } catch (err) { res.status(500).json(err); }
+});
+
 // === POST ROUTES (ab protected) ===
 // ?club=slug diya jaaye toh sirf usi club ke posts (ClubDetail page ke liye)
 app.get('/api/posts', async (req, res) => {
@@ -521,11 +557,21 @@ app.delete('/api/notices/:id', authMiddleware, async (req, res) => {
 
 // === CHAT ROUTES ===
 
-// Sab users ki list (private chat start karne ke liye, apna naam chhodke)
+// Sab users ki list (private chat + Students modal ke liye, apna naam chhodke)
 app.get('/api/users', authMiddleware, async (req, res) => {
     try {
-        const users = await User.find({ username: { $ne: req.user.username } }).select("username profilePic department");
-        res.json(users);
+        const users = await User.find({ username: { $ne: req.user.username } })
+            .select("username profilePic department followers following");
+        const myUsername = req.user.username;
+        const result = users.map((u) => ({
+            username: u.username,
+            profilePic: u.profilePic,
+            department: u.department,
+            followersCount: u.followers.length,
+            followingCount: u.following.length,
+            isFollowing: u.followers.includes(myUsername)
+        }));
+        res.json(result);
     } catch (err) { res.status(500).json(err); }
 });
 
