@@ -8,6 +8,7 @@ import { StudyMaterials } from "./pages/StudyMaterials";
 import { NoticeBoard } from "./pages/NoticeBoard";
 import { ClubDetail } from "./pages/ClubDetail";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { AboutApp } from "./pages/AboutApp";
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
         <Route path="/" element={<Login />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/about" element={<AboutApp />} />
 
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />

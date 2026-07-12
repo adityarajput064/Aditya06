@@ -34,6 +34,7 @@ import {
   IdCard,
   Pencil,
   MapPinned,
+  Info,
 } from "lucide-react";
 
 const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000");
@@ -254,16 +255,29 @@ export const Dashboard = () => {
             </div>
           </div>
 
-          <button
-            onClick={() => { localStorage.clear(); navigate("/login"); }}
-            className="flex items-center gap-4 w-full p-3 rounded-xl transition text-sm font-medium"
-            style={{ color: "#f87171" }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(248,113,113,0.08)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-          >
-            <LogOut size={19} strokeWidth={1.8} />
-            <span className="hidden md:block">Logout</span>
-          </button>
+          <div className="space-y-1">
+            <button
+              onClick={() => navigate("/about")}
+              className="flex items-center gap-4 w-full p-3 rounded-xl transition text-sm font-medium"
+              style={{ color: "var(--text-muted)" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              <Info size={19} strokeWidth={1.8} />
+              <span className="hidden md:block">About App</span>
+            </button>
+
+            <button
+              onClick={() => { localStorage.clear(); navigate("/login"); }}
+              className="flex items-center gap-4 w-full p-3 rounded-xl transition text-sm font-medium"
+              style={{ color: "#f87171" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(248,113,113,0.08)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              <LogOut size={19} strokeWidth={1.8} />
+              <span className="hidden md:block">Logout</span>
+            </button>
+          </div>
         </div>
 
         {/* FEED */}
@@ -417,9 +431,15 @@ export const Dashboard = () => {
             })}
           </div>
 
-          <div className="text-[11px] leading-relaxed mt-10 text-center" style={{ color: "var(--text-muted)" }}>
-            Campus Connect V1.0 <br /> Created for Students
-          </div>
+          <button
+            onClick={() => navigate("/about")}
+            className="text-[11px] leading-relaxed mt-10 text-center w-full transition"
+            style={{ color: "var(--text-muted)" }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent-1)")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+          >
+            Campus Connect V1.0 <br /> Built by ADITECH
+          </button>
 
           <div className="mt-6">
             <TrendingSidebar posts={posts} />
