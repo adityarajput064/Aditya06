@@ -11,7 +11,9 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const nodemailer = require('nodemailer'); // NAYA — OTP email bhejne ke liye
+// NAYA: nodemailer hata diya — Render free tier SMTP ports (465/587) block karta hai,
+// isliye Gmail SMTP se email bhejna hang ho jaata tha. Ab Brevo ka HTTP API use karenge
+// (HTTPS pe chalta hai, jo block nahi hai).
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -56,15 +58,31 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// === 🛑 NAYA: EMAIL TRANSPORTER (Gmail SMTP — free, OTP bhejne ke liye) ===
-// EMAIL_USER = teri Gmail id, EMAIL_PASS = Gmail "App Password" (normal password nahi chalega)
-const emailTransporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-    },
-});
+// === 🛑 UPDATED: EMAIL BHEJNE KA HELPER — Brevo HTTP API (SMTP nahi) ===
+// Render free tier SMTP ports block karta hai, isliye HTTPS-based Brevo API use kar rahe hain.
+// BREVO_API_KEY aur EMAIL_USER (verified sender) Render ke Environment mein set karne honge.
+const sendEmail = async (to, subject, html) => {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+            'accept': 'application/json',
+            'content-type': 'application/json',
+            'api-key': process.env.BREVO_API_KEY,
+        },
+        body: JSON.stringify({
+            sender: { name: 'Campus Connect', email: process.env.EMAIL_USER },
+            to: [{ email: to }],
+            subject,
+            htmlContent: html,
+        }),
+    });
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Brevo email failed: ${response.status} ${errText}`);
+    }
+    return response.json();
+};
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
@@ -434,17 +452,16 @@ app.post('/api/otp/send-signup', async (req, res) => {
         await Otp.deleteMany({ email }); // purana OTP hata ke naya save karo
         await new Otp({ email, otp }).save();
 
-        await emailTransporter.sendMail({
-            from: `"Campus Connect" <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject: "Campus Connect — Email Verify Karo",
-            html: `<div style="font-family:sans-serif;padding:20px;">
+        await sendEmail(
+            email,
+            "Campus Connect — Email Verify Karo",
+            `<div style="font-family:sans-serif;padding:20px;">
                 <h2 style="color:#00E5FF;">Campus Connect</h2>
                 <p>Apni email verify karne ke liye ye OTP daalo:</p>
                 <h1 style="letter-spacing:6px;">${otp}</h1>
                 <p style="color:#888;font-size:13px;">Ye OTP 5 minute mein expire ho jayega. Agar tune signup nahi kiya, to ignore kar do.</p>
-            </div>`,
-        });
+            </div>`
+        );
 
         res.json({ message: "OTP bhej diya gaya hai" });
     } catch (err) {
@@ -538,17 +555,16 @@ app.post('/api/otp/send-reset', async (req, res) => {
         await Otp.deleteMany({ email });
         await new Otp({ email, otp }).save();
 
-        await emailTransporter.sendMail({
-            from: `"Campus Connect" <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject: "Campus Connect — Password Reset Karo",
-            html: `<div style="font-family:sans-serif;padding:20px;">
+        await sendEmail(
+            email,
+            "Campus Connect — Password Reset Karo",
+            `<div style="font-family:sans-serif;padding:20px;">
                 <h2 style="color:#00E5FF;">Campus Connect</h2>
                 <p>Apna password reset karne ke liye ye OTP daalo:</p>
                 <h1 style="letter-spacing:6px;">${otp}</h1>
                 <p style="color:#888;font-size:13px;">Ye OTP 5 minute mein expire ho jayega. Agar tune ye request nahi ki, to ignore kar do — tera password same rahega.</p>
-            </div>`,
-        });
+            </div>`
+        );
 
         res.json({ message: "Agar ye email registered hai, to OTP bhej diya gaya hai" });
     } catch (err) {
