@@ -938,7 +938,7 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
 Tumhara kaam students ki padhai aur campus life mein madad karna hai: concepts explain karna, study notes dhoondhne mein guide karna (jo "Study Materials" section mein milte hain), GTU jaisi university ke purane papers (PYQ) ke baare mein general study tips dena, aur agar koi Attendance ya Events poochhe to unhe bata dena ki Events "Notice Board" mein aur Dashboard ke "Upcoming Events" mein milte hain, aur Attendance tracking abhi is app mein available nahi hai.
 Hamesha friendly, concise aur helpful jawab do — Hinglish (Hindi + English mix) mein baat karo jaisa Indian college students aapas mein karte hain. Zaroorat se zyada lamba jawab mat do.`;
 
-        const response = await fetch(
+        const callGemini = () => fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`,
             {
                 method: "POST",
@@ -950,7 +950,16 @@ Hamesha friendly, concise aur helpful jawab do — Hinglish (Hindi + English mix
             }
         );
 
-        const data = await response.json();
+        // === 🛑 NAYA: Retry logic — Gemini kabhi-kabhi "high demand" (503) dikhata hai,
+        // jo temporary hota hai. 2 baar automatic retry karte hain user ko error dikhane se pehle.
+        let response = await callGemini();
+        let data = await response.json();
+
+        for (let attempt = 0; !response.ok && response.status === 503 && attempt < 2; attempt++) {
+            await new Promise((r) => setTimeout(r, 1000 * (attempt + 1))); // 1s, phir 2s wait
+            response = await callGemini();
+            data = await response.json();
+        }
 
         if (!response.ok) {
             console.error("Gemini API error:", data);
