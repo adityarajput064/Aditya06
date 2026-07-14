@@ -73,7 +73,7 @@ const sendEmail = async (to, otp, purpose) => {
             user_id: process.env.EMAILJS_PUBLIC_KEY,
             accessToken: process.env.EMAILJS_PRIVATE_KEY, // server (non-browser) se call karne ke liye zaroori hai
             template_params: {
-                to_email: to,
+                email: to,
                 otp,
                 purpose,
             },
