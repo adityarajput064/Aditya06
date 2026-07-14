@@ -58,30 +58,33 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// === 🛑 UPDATED: EMAIL BHEJNE KA HELPER — Brevo HTTP API (SMTP nahi) ===
-// Render free tier SMTP ports block karta hai, isliye HTTPS-based Brevo API use kar rahe hain.
-// BREVO_API_KEY aur EMAIL_USER (verified sender) Render ke Environment mein set karne honge.
-const sendEmail = async (to, subject, html) => {
-    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+// === 🛑 UPDATED: EMAIL BHEJNE KA HELPER — EmailJS (free, no domain/DNS zaroori nahi) ===
+// EmailJS ke dashboard mein Gmail service connect karo aur ek template banao jisme
+// {{to_email}}, {{otp}}, aur {{purpose}} variables ho.
+// Render Environment mein ye 4 set karne honge:
+// EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, EMAILJS_PRIVATE_KEY
+const sendEmail = async (to, otp, purpose) => {
+    const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
         method: 'POST',
-        headers: {
-            'accept': 'application/json',
-            'content-type': 'application/json',
-            'api-key': process.env.BREVO_API_KEY,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            sender: { name: 'Campus Connect', email: process.env.EMAIL_USER },
-            to: [{ email: to }],
-            subject,
-            htmlContent: html,
+            service_id: process.env.EMAILJS_SERVICE_ID,
+            template_id: process.env.EMAILJS_TEMPLATE_ID,
+            user_id: process.env.EMAILJS_PUBLIC_KEY,
+            accessToken: process.env.EMAILJS_PRIVATE_KEY, // server (non-browser) se call karne ke liye zaroori hai
+            template_params: {
+                to_email: to,
+                otp,
+                purpose,
+            },
         }),
     });
 
     if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`Brevo email failed: ${response.status} ${errText}`);
+        throw new Error(`EmailJS failed: ${response.status} ${errText}`);
     }
-    return response.json();
+    return response;
 };
 
 const server = http.createServer(app);
@@ -452,16 +455,7 @@ app.post('/api/otp/send-signup', async (req, res) => {
         await Otp.deleteMany({ email }); // purana OTP hata ke naya save karo
         await new Otp({ email, otp }).save();
 
-        await sendEmail(
-            email,
-            "Campus Connect — Email Verify Karo",
-            `<div style="font-family:sans-serif;padding:20px;">
-                <h2 style="color:#00E5FF;">Campus Connect</h2>
-                <p>Apni email verify karne ke liye ye OTP daalo:</p>
-                <h1 style="letter-spacing:6px;">${otp}</h1>
-                <p style="color:#888;font-size:13px;">Ye OTP 5 minute mein expire ho jayega. Agar tune signup nahi kiya, to ignore kar do.</p>
-            </div>`
-        );
+        await sendEmail(email, otp, "verify your email for signup");
 
         res.json({ message: "OTP bhej diya gaya hai" });
     } catch (err) {
@@ -555,16 +549,7 @@ app.post('/api/otp/send-reset', async (req, res) => {
         await Otp.deleteMany({ email });
         await new Otp({ email, otp }).save();
 
-        await sendEmail(
-            email,
-            "Campus Connect — Password Reset Karo",
-            `<div style="font-family:sans-serif;padding:20px;">
-                <h2 style="color:#00E5FF;">Campus Connect</h2>
-                <p>Apna password reset karne ke liye ye OTP daalo:</p>
-                <h1 style="letter-spacing:6px;">${otp}</h1>
-                <p style="color:#888;font-size:13px;">Ye OTP 5 minute mein expire ho jayega. Agar tune ye request nahi ki, to ignore kar do — tera password same rahega.</p>
-            </div>`
-        );
+        await sendEmail(email, otp, "reset your password");
 
         res.json({ message: "Agar ye email registered hai, to OTP bhej diya gaya hai" });
     } catch (err) {
