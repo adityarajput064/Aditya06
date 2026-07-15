@@ -14,6 +14,10 @@ import {
 
 const DEPARTMENTS = ["Mechanical", "CSE", "Electrical", "Civil", "General"];
 
+// NAYA: Cloudinary free plan ka per-file limit 10MB hai, isse zyada
+// backend se hi reject hoga — isliye upload se pehle hi check kar lete hain
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
 export const StudyMaterials = () => {
   const navigate = useNavigate();
   const username = localStorage.getItem("username") || "Guest";
@@ -42,6 +46,23 @@ export const StudyMaterials = () => {
     }
   };
 
+  // NAYA: file select hote hi size check, taaki user ko turant pata chale
+  // (upload button dabane se pehle hi), server ka round-trip wait nahi karna padega
+  const handleFileChange = (e) => {
+    const selected = e.target.files[0];
+    if (selected && selected.size > MAX_FILE_SIZE) {
+      alert(
+        `Ye file bahut badi hai (${(selected.size / (1024 * 1024)).toFixed(
+          1
+        )} MB). Maximum allowed size 10 MB hai — please chhoti file ya compressed version try karo.`
+      );
+      e.target.value = ""; // input reset taaki purani badi file selected na rahe
+      setFile(null);
+      return;
+    }
+    setFile(selected);
+  };
+
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!file || !title.trim()) {
@@ -63,7 +84,12 @@ export const StudyMaterials = () => {
       setFile(null);
       fetchMaterials();
     } catch (err) {
-      alert("Upload nahi ho paya. Server error.");
+      // NAYA: backend ab specific error message bhejta hai (jaise
+      // "File size too large. Got X. Maximum is Y."), usse hi dikhate hain
+      // generic "Server error" ki jagah, taaki user ko asli wajah pata chale
+      const backendMessage =
+        err.response?.data?.error || err.response?.data?.message;
+      alert(backendMessage || "Upload nahi ho paya. Server error.");
     } finally {
       setUploading(false);
     }
@@ -132,14 +158,19 @@ export const StudyMaterials = () => {
 
           <div>
             <label className="text-xs block mb-1 uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-              File (PDF, DOCX, image)
+              File (PDF, DOCX, image) — max 10MB
             </label>
             <input
               type="file"
-              onChange={(e) => setFile(e.target.files[0])}
+              onChange={handleFileChange}
               className="w-full text-sm"
               style={{ color: "var(--text-muted)" }}
             />
+            {file && (
+              <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                Selected: {file.name} ({(file.size / (1024 * 1024)).toFixed(1)} MB)
+              </p>
+            )}
           </div>
 
           <button
