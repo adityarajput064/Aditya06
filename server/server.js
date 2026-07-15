@@ -790,7 +790,18 @@ app.get('/api/materials', async (req, res) => {
     } catch (err) { res.status(500).json(err); }
 });
 
-app.post('/api/materials', authMiddleware, upload.single('file'), async (req, res) => {
+app.post('/api/materials', authMiddleware, (req, res, next) => {
+    // NAYA: multer/Cloudinary upload ko manually wrap kiya hai taaki uska error bhi
+    // pakad sakein (normally ye middleware ka error try/catch ke bahar hota hai
+    // isliye pehle generic [object Object] / silent 500 aa raha tha)
+    upload.single('file')(req, res, (err) => {
+        if (err) {
+            console.error("Upload middleware error:", err);
+            return res.status(500).json({ message: "File upload failed", error: err.message });
+        }
+        next();
+    });
+}, async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ message: "File is required" });
         const newMaterial = new Material({
@@ -802,7 +813,10 @@ app.post('/api/materials', authMiddleware, upload.single('file'), async (req, re
         });
         await newMaterial.save();
         res.json(newMaterial);
-    } catch (err) { res.status(500).json(err); }
+    } catch (err) {
+        console.error("Material save error:", err);
+        res.status(500).json({ message: "Server error saving material", error: err.message });
+    }
 });
 
 app.delete('/api/materials/:id', authMiddleware, async (req, res) => {
