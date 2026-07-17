@@ -11,6 +11,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const cron = require('node-cron'); // NAYA — daily poll auto-post ke liye
 // NAYA: nodemailer hata diya — Render free tier SMTP ports (465/587) block karta hai,
 // isliye Gmail SMTP se email bhejna hang ho jaata tha. Ab Brevo ka HTTP API use karenge
 // (HTTPS pe chalta hai, jo block nahi hai).
@@ -241,7 +242,7 @@ const Post = mongoose.model('Post', new mongoose.Schema({
     content: String,
     type: {
         type: String,
-        enum: ['general', 'image', 'pdf', 'notes', 'question', 'poll', 'lostfound', 'event', 'notice'],
+        enum: ['general', 'image', 'pdf', 'notes', 'question', 'poll', 'lostfound', 'event', 'notice', 'meme'], // NAYA: 'meme' add kiya
         default: 'general'
     },
     club: { type: String, default: null }, // e.g. "esports-club" — group page filtering ke liye (optional)
@@ -255,6 +256,7 @@ const Post = mongoose.model('Post', new mongoose.Schema({
     }],
     likes: { type: Number, default: 0 },
     likedBy: [String],          // toggle ke liye (dobara like = unlike)
+    reactions: [{ username: String, emoji: String }], // NAYA — emoji reactions (like ke alawa)
     savedBy: [String],          // bookmark/save karne wale users
     shareCount: { type: Number, default: 0 },
     comments: [{ username: String, text: String }]
@@ -658,7 +660,9 @@ app.put('/api/users/:username/follow', authMiddleware, async (req, res) => {
 // ?club=slug diya jaaye toh sirf usi club ke posts (ClubDetail page ke liye)
 app.get('/api/posts', async (req, res) => {
     try {
-        const filter = req.query.club ? { club: req.query.club } : {};
+        const filter = {};
+        if (req.query.club) filter.club = req.query.club;
+        if (req.query.type) filter.type = req.query.type; // NAYA — ?type=meme se sirf memes milenge
         const posts = await Post.find(filter).sort({ createdAt: -1 });
         res.json(posts);
     }
@@ -705,6 +709,50 @@ app.put('/api/posts/:id/like', authMiddleware, async (req, res) => {
         }
 
         res.json(post);
+    } catch (err) { res.status(500).json(err); }
+});
+
+// === NAYA: EMOJI REACTIONS (like ke alawa, ek user ek waqt mein ek hi reaction) ===
+const ALLOWED_REACTIONS = ["👍", "❤️", "😂", "😮", "😢"];
+
+app.put('/api/posts/:id/react', authMiddleware, async (req, res) => {
+    try {
+        const { emoji } = req.body;
+        if (!ALLOWED_REACTIONS.includes(emoji)) {
+            return res.status(400).json({ message: "Invalid reaction" });
+        }
+        const post = await Post.findById(req.params.id);
+        if (!post) return res.status(404).json({ message: "Post not found" });
+        const username = req.user.username;
+
+        const existingIndex = post.reactions.findIndex((r) => r.username === username);
+        const hadSameReaction = existingIndex !== -1 && post.reactions[existingIndex].emoji === emoji;
+
+        if (existingIndex !== -1) post.reactions.splice(existingIndex, 1); // purana reaction hata do
+        if (!hadSameReaction) {
+            post.reactions.push({ username, emoji }); // naya add karo (same emoji dobara dabaya = toggle off)
+            if (post.username !== username) {
+                await notifyUser(post.username, username, 'like', `${username} ne aapki post pe ${emoji} react kiya`, post._id);
+            }
+        }
+
+        await post.save();
+        res.json(post);
+    } catch (err) { res.status(500).json(err); }
+});
+
+// === NAYA: MEME OF THE WEEK (pichle 7 din ke memes mein sabse zyada reactions+likes) ===
+app.get('/api/memes/of-the-week', async (req, res) => {
+    try {
+        const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const memes = await Post.find({ type: 'meme', createdAt: { $gte: weekAgo } });
+        if (!memes.length) return res.json(null);
+        const winner = memes.reduce((best, m) => {
+            const score = (m.reactions?.length || 0) + (m.likes || 0);
+            const bestScore = (best.reactions?.length || 0) + (best.likes || 0);
+            return score > bestScore ? m : best;
+        });
+        res.json(winner);
     } catch (err) { res.status(500).json(err); }
 });
 
@@ -987,6 +1035,31 @@ Hamesha friendly, concise aur helpful jawab do — Hinglish (Hindi + English mix
         res.status(500).json({ message: "Server error, thodi der baad try karo." });
     }
 });
+
+// === NAYA: DAILY POLL — har din 9 AM (server time) khud-ba-khud ek fun poll post ho jaata hai ===
+const DAILY_POLL_QUESTIONS = [
+    { content: "Aaj ka canteen ka best item kaunsa hai? 🍽️", options: ["Samosa", "Maggi", "Chai", "Vada Pav"] },
+    { content: "Kaunsa department sabse zyada assignment deta hai? 😂", options: ["CSE", "Mechanical", "Electrical", "Civil"] },
+    { content: "Weekend pe kya karoge?", options: ["Sona", "Ghumna", "Padhna", "Netflix"] },
+    { content: "Sabse boring lecture kaunsa hota hai?", options: ["Maths", "Physics", "Chemistry", "Theory subject"] },
+    { content: "Exam ke ek din pehle kya karte ho?", options: ["Poora syllabus padhte hain", "Sirf important topics", "Panic karte hain", "Sote hain"] },
+];
+
+async function postDailyPoll() {
+    try {
+        const q = DAILY_POLL_QUESTIONS[Math.floor(Math.random() * DAILY_POLL_QUESTIONS.length)];
+        const poll = new Post({
+            username: "CampusBot",
+            content: q.content,
+            type: "poll",
+            pollOptions: q.options.map((text) => ({ text, votes: [] })),
+        });
+        await poll.save();
+        console.log("✅ Daily poll posted:", q.content);
+    } catch (err) { console.error("Daily poll post failed:", err.message); }
+}
+
+cron.schedule('0 9 * * *', postDailyPoll); // '0 9 * * *' = roz subah 9:00 baje
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
