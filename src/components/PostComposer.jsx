@@ -15,6 +15,7 @@ import {
   BookMarked,
   Rocket,
   Briefcase,
+  Laugh,
 } from "lucide-react";
 
 const POST_TYPES = [
@@ -23,6 +24,7 @@ const POST_TYPES = [
   { key: "notes", label: "Notes", icon: FileText },
   { key: "pdf", label: "PDF", icon: FileText },
   { key: "image", label: "Image", icon: ImageIcon },
+  { key: "meme", label: "Meme", icon: Laugh },
   { key: "poll", label: "Poll", icon: BarChart3 },
   { key: "lostfound", label: "Lost & Found", icon: Search },
   { key: "event", label: "Event", icon: PartyPopper },
@@ -219,8 +221,8 @@ export const PostComposer = ({ onSubmit, onClose }) => {
             />
           )}
 
-          {/* IMAGE UPLOAD */}
-          {type === "image" && (
+          {/* IMAGE UPLOAD (meme bhi isi UI ko reuse karta hai) */}
+          {(type === "image" || type === "meme") && (
             <>
               {imagePreview && (
                 <div className="relative mb-4">

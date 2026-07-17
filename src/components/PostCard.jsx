@@ -16,6 +16,7 @@ import {
   Bookmark,
   Check,
   Send,
+  Laugh,
 } from "lucide-react";
 
 const TYPE_BADGES = {
@@ -27,9 +28,13 @@ const TYPE_BADGES = {
   lostfound: { label: "Lost & Found", icon: Search },
   event: { label: "Event", icon: PartyPopper },
   notice: { label: "Notice", icon: Pin },
+  meme: { label: "Meme", icon: Laugh },
 };
 
-export const PostCard = ({ post, currentUsername, onDelete, onLike, onSave, onShare, onVote, onReply }) => {
+// NAYA — emoji reaction set (Like/Helpful ke alawa)
+const REACTIONS = ["👍", "❤️", "😂", "😮", "😢"];
+
+export const PostCard = ({ post, currentUsername, onDelete, onLike, onSave, onShare, onVote, onReply, onReact }) => {
   const [showComments, setShowComments] = useState(false);
   const [replyText, setReplyText] = useState("");
 
@@ -37,6 +42,7 @@ export const PostCard = ({ post, currentUsername, onDelete, onLike, onSave, onSh
   const BadgeIcon = badge?.icon;
   const hasLiked = post.likedBy?.includes(currentUsername);
   const hasSaved = post.savedBy?.includes(currentUsername);
+  const myReaction = post.reactions?.find((r) => r.username === currentUsername)?.emoji; // NAYA
   const totalVotes = post.pollOptions?.reduce((sum, o) => sum + o.votes.length, 0) || 0;
   const myVoteIndex = post.pollOptions?.findIndex((o) => o.votes.includes(currentUsername));
 
@@ -175,6 +181,30 @@ export const PostCard = ({ post, currentUsername, onDelete, onLike, onSave, onSh
             );
           })}
           <p className="text-xs" style={{ color: "var(--text-muted)" }}>{totalVotes} vote{totalVotes !== 1 && "s"}</p>
+        </div>
+      )}
+
+      {/* NAYA: EMOJI REACTIONS */}
+      {onReact && (
+        <div className="flex gap-1.5 mt-3 flex-wrap">
+          {REACTIONS.map((emoji) => {
+            const count = post.reactions?.filter((r) => r.emoji === emoji).length || 0;
+            const active = myReaction === emoji;
+            return (
+              <button
+                key={emoji}
+                onClick={() => onReact(post._id, emoji)}
+                className="flex items-center gap-1 px-2 py-1 rounded-full text-sm transition"
+                style={{
+                  background: active ? "color-mix(in srgb, var(--accent-1) 20%, transparent)" : "var(--surface-2)",
+                  border: active ? "1px solid var(--accent-1)" : "1px solid transparent",
+                }}
+              >
+                {emoji}
+                {count > 0 && <span className="text-xs" style={{ color: "var(--text-muted)" }}>{count}</span>}
+              </button>
+            );
+          })}
         </div>
       )}
 

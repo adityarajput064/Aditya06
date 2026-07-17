@@ -91,6 +91,14 @@ export const ClubDetail = () => {
     } catch { alert("Reply nahi ho paya."); }
   };
 
+  // NAYA — emoji reaction toggle
+  const handleReact = async (id, emoji) => {
+    try {
+      const res = await api.put(`/api/posts/${id}/react`, { emoji });
+      setPosts((prev) => prev.map((p) => (p._id === id ? res.data : p)));
+    } catch { alert("Reaction nahi ho paya."); }
+  };
+
   return (
     <div className="min-h-screen relative font-sans" style={{ background: "var(--bg-base)", color: "var(--text-main)" }}>
       <AnimatedBackground />
@@ -139,6 +147,7 @@ export const ClubDetail = () => {
                 onShare={handleShare}
                 onVote={handleVote}
                 onReply={handleReply}
+                onReact={handleReact}
               />
             ))
           ) : (

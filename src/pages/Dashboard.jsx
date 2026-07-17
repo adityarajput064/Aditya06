@@ -36,6 +36,7 @@ import {
   MapPinned,
   Info,
   Bot,
+  Laugh,
 } from "lucide-react";
 
 const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000");
@@ -155,6 +156,14 @@ export const Dashboard = () => {
     }
   };
 
+  // NAYA — emoji reaction toggle
+  const handleReact = async (id, emoji) => {
+    try {
+      const res = await api.put(`/api/posts/${id}/react`, { emoji });
+      setPosts((prev) => prev.map((p) => (p._id === id ? res.data : p)));
+    } catch (err) { alert("Reaction nahi ho paya."); }
+  };
+
   const handleReply = async (id, text) => {
     if (!text.trim()) return;
     try {
@@ -248,6 +257,18 @@ export const Dashboard = () => {
               >
                 <Bot size={19} strokeWidth={1.8} />
                 <span className="hidden md:block text-sm font-medium">Campus AI</span>
+              </button>
+
+              {/* NAYA — Meme Corner */}
+              <button
+                onClick={() => navigate("/meme-corner")}
+                className="flex items-center gap-4 w-full p-3 rounded-xl transition"
+                style={{ color: "var(--text-muted)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                <Laugh size={19} strokeWidth={1.8} />
+                <span className="hidden md:block text-sm font-medium">Meme Corner</span>
               </button>
 
               <button
@@ -351,6 +372,7 @@ export const Dashboard = () => {
                 onShare={handleShare}
                 onVote={handleVote}
                 onReply={handleReply}
+                onReact={handleReact}
               />
             )) : (
               <div className="glow-card text-center mt-16 p-10">
