@@ -113,6 +113,7 @@ mongoose.connect(process.env.MONGO_URI)
 
 // === SCHEMAS ===
 const UserSchema = new mongoose.Schema({
+    name: { type: String, default: "" },
     username: { type: String, required: true, unique: true },
     email: { type: String, required: true, unique: true },
     mobile: { type: String, unique: true, sparse: true },
@@ -698,12 +699,35 @@ app.put('/api/users/:username', authMiddleware, async (req, res) => {
             return res.status(403).json({ message: "You can only edit your own profile" });
         }
         const { password, ...safeUpdates } = req.body; // password yahan se update nahi hoga
+
+        // Agar naya username diya gaya hai aur wo kisi aur ka nahi hai, to hi check/update karo
+        if (safeUpdates.username && safeUpdates.username !== req.params.username) {
+            const clash = await User.findOne({ username: safeUpdates.username });
+            if (clash) {
+                return res.status(400).json({ message: "Username already taken" });
+            }
+        }
+
         const updatedUser = await User.findOneAndUpdate(
             { username: req.params.username },
             { $set: safeUpdates },
             { new: true }
         ).select("-password");
-        res.json(updatedUser);
+
+        if (!updatedUser) return res.status(404).json({ message: "User not found" });
+
+        const responseObj = updatedUser.toObject();
+
+        // Username badla ho to naya token bhejo, warna purane token se aage ke requests 403 denge
+        if (safeUpdates.username && safeUpdates.username !== req.params.username) {
+            responseObj.newToken = jwt.sign(
+                { id: updatedUser._id, username: updatedUser.username },
+                process.env.JWT_SECRET,
+                { expiresIn: "7d" }
+            );
+        }
+
+        res.json(responseObj);
     } catch (err) { res.status(500).json(err); }
 });
 
