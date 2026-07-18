@@ -2,31 +2,44 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   User, Lock, Globe, LogOut, Check,
-  Users, X as XIcon, Save,
+  Users, X as XIcon, Save, Bot,
 } from "lucide-react";
 import api from "../utils/api";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { useLanguage } from "../context/LanguageContext";
 
+// === NAYA: Settings page — Account, Privacy (private account + follow requests), Campus AI, Language ===
+// Route mein add karo: <Route path="/settings" element={<Settings />} />
 export const Settings = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const username = localStorage.getItem("username") || "";
 
   const [profile, setProfile] = useState(null);
-  // NAYA: Form state mein 'name' aur 'username' add kiye gaye hain
-  const [form, setForm] = useState({ name: "", username: "", bio: "", department: "", institute: "", enrollmentNumber: "", skills: "" });
+  const [form, setForm] = useState({ bio: "", department: "", institute: "", enrollmentNumber: "", skills: "" });
   const [saved, setSaved] = useState(false);
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // === NAYA: Campus AI floating button on/off ===
+  const [campusAIEnabled, setCampusAIEnabled] = useState(
+    localStorage.getItem("campusAIEnabled") !== "false"
+  );
+
+  const handleToggleCampusAI = () => {
+    const newVal = !campusAIEnabled;
+    setCampusAIEnabled(newVal);
+    localStorage.setItem("campusAIEnabled", newVal ? "true" : "false");
+    // NAYA — same tab mein AIAssistant.jsx ko turant pata chal jaye
+    // (storage event sirf dusre tabs mein fire hota hai, isi tab ke liye custom event chahiye)
+    window.dispatchEvent(new Event("campusai-toggle"));
+  };
 
   const loadProfile = useCallback(async () => {
     try {
       const res = await api.get(`/api/users/${username}`);
       setProfile(res.data);
       setForm({
-        name: res.data.name || "",
-        username: res.data.username || "",
         bio: res.data.bio || "",
         department: res.data.department || "",
         institute: res.data.institute || "",
@@ -45,44 +58,30 @@ export const Settings = () => {
   }, []);
 
   useEffect(() => {
-    if (!username) { navigate("/login"); return; }
+    if (!username) { navigate("/login"); return; } // NAYA — apna actual login route yahan lagao agar alag hai
     loadProfile();
     loadFollowRequests();
   }, [username, loadProfile, loadFollowRequests, navigate]);
 
-  // NAYA: Handle Save jisme Username change check hota hai
   const handleSaveAccount = async () => {
     try {
-      const formattedUsername = form.username.toLowerCase().replace(/\s+/g, '');
-      const res = await api.put(`/api/users/${username}`, { ...form, username: formattedUsername });
-      
-      // Agar username change hua hai toh localStorage aur API tokens ko naye username ke sath set karo
-      if (formattedUsername !== username) {
-        localStorage.setItem("username", formattedUsername);
-        if (form.name) localStorage.setItem("name", form.name);
-        if (res.data.newToken) localStorage.setItem("token", res.data.newToken);
-        alert("Username successfully updated! Reloading app...");
-        window.location.reload();
-        return;
-      }
-
-      if (form.name) localStorage.setItem("name", form.name);
+      await api.put(`/api/users/${username}`, form);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
       console.error("Save failed:", err);
-      alert(err.response?.data?.message || "Save nahi ho paya, dobara try karo.");
+      alert("Save nahi ho paya, dobara try karo.");
     }
   };
 
   const handleTogglePrivate = async () => {
     const newVal = !profile.isPrivate;
-    setProfile((p) => ({ ...p, isPrivate: newVal }));
+    setProfile((p) => ({ ...p, isPrivate: newVal })); // optimistic update
     try {
       await api.put(`/api/users/${username}`, { isPrivate: newVal });
     } catch (err) {
       console.error(err);
-      setProfile((p) => ({ ...p, isPrivate: !newVal }));
+      setProfile((p) => ({ ...p, isPrivate: !newVal })); // fail hua to wapas revert
     }
   };
 
@@ -110,8 +109,9 @@ export const Settings = () => {
   };
 
   const handleLogout = () => {
-    localStorage.clear();
-    navigate("/login");
+    localStorage.removeItem("token");
+    localStorage.removeItem("username");
+    navigate("/login"); // NAYA — apna actual login route yahan lagao agar alag hai
   };
 
   if (loading || !profile) {
@@ -129,30 +129,6 @@ export const Settings = () => {
         </h2>
 
         <div className="space-y-3">
-          {/* NAYA: Full Name aur Username input fields */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-muted)" }}>Full Name</label>
-              <input
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="Aapka Poora Naam"
-                className="w-full p-3 rounded-xl outline-none text-sm border"
-                style={{ background: "var(--surface-2)", borderColor: "var(--border-subtle)", color: "var(--text-main)" }}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-muted)" }}>Username</label>
-              <input
-                value={form.username}
-                onChange={(e) => setForm((f) => ({ ...f, username: e.target.value.toLowerCase().replace(/\s+/g, '') }))}
-                placeholder="aadi064"
-                className="w-full p-3 rounded-xl outline-none text-sm border"
-                style={{ background: "var(--surface-2)", borderColor: "var(--border-subtle)", color: "var(--text-main)" }}
-              />
-            </div>
-          </div>
-
           <div>
             <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-muted)" }}>{t("bio")}</label>
             <textarea
@@ -236,7 +212,24 @@ export const Settings = () => {
         </div>
       </div>
 
-      {/* === FOLLOW REQUESTS SECTION === */}
+      {/* === CAMPUS AI SECTION (naya) === */}
+      <div className="glow-card p-5">
+        <h2 className="flex items-center gap-2 font-semibold mb-4" style={{ color: "var(--accent-1)" }}>
+          <Bot size={18} /> Campus AI
+        </h2>
+
+        <div className="flex items-center justify-between gap-4 py-2">
+          <div>
+            <p className="text-sm font-medium" style={{ color: "var(--text-main)" }}>Floating AI button</p>
+            <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+              On rakhoge to screen par ek chhota AI button dikhega — finger se drag karke usse kahin bhi set kar sakte ho.
+            </p>
+          </div>
+          <ToggleSwitch checked={campusAIEnabled} onChange={handleToggleCampusAI} />
+        </div>
+      </div>
+
+      {/* === FOLLOW REQUESTS SECTION (sirf private account ke liye relevant, but hamesha check kar sakte hain) === */}
       <div className="glow-card p-5">
         <h2 className="flex items-center gap-2 font-semibold mb-4" style={{ color: "var(--accent-1)" }}>
           <Users size={18} /> {t("followRequests")} {requests.length > 0 && `(${requests.length})`}
@@ -308,6 +301,7 @@ export const Settings = () => {
   );
 };
 
+// Chhota reusable toggle switch
 const ToggleSwitch = ({ checked, onChange }) => (
   <button
     onClick={onChange}

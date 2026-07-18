@@ -3,10 +3,10 @@ import { Bot, X, Send, FileText, Atom, ScrollText, CalendarCheck2, PartyPopper, 
 import api from "../utils/api";
 import { useNavigate } from "react-router-dom";
 
-// === 🛑 NAYA: AI ASSISTANT (bottom-right floating widget) ===
+// === 🛑 NAYA: AI ASSISTANT (bottom-right floating widget, ab draggable + toggleable) ===
 // OpenAI se connected — /api/ai/chat route backend mein handle karta hai.
 // Poore app mein globally dikhta hai (App.jsx se render hota hai), sirf
-// login/signup pe khud-ba-khud hide ho jata hai (neeche check dekho).
+// login/signup pe khud-ba-khud hide ho jata hai, aur Settings se on/off ho sakta hai.
 
 const QUICK_ACTIONS = [
   { key: "notes", label: "Find Notes", icon: FileText, kind: "navigate", to: "/study-materials" },
@@ -16,9 +16,31 @@ const QUICK_ACTIONS = [
   { key: "events", label: "Events", icon: PartyPopper, kind: "navigate", to: "/notice-board" },
 ];
 
+// NAYA — draggable positioning helpers
+const BUTTON_SIZE = 56; // w-14 h-14
+const EDGE_MARGIN = 8;
+
+function getDefaultPosition() {
+  return {
+    x: window.innerWidth - BUTTON_SIZE - 20,
+    y: window.innerHeight - BUTTON_SIZE - 96, // purani jagah jaisi hi (bottom-24 right-5)
+  };
+}
+
+function clampPosition(pos) {
+  const maxX = Math.max(EDGE_MARGIN, window.innerWidth - BUTTON_SIZE - EDGE_MARGIN);
+  const maxY = Math.max(EDGE_MARGIN, window.innerHeight - BUTTON_SIZE - EDGE_MARGIN);
+  return {
+    x: Math.min(Math.max(EDGE_MARGIN, pos.x), maxX),
+    y: Math.min(Math.max(EDGE_MARGIN, pos.y), maxY),
+  };
+}
+
 export function AIAssistant() {
   const navigate = useNavigate();
   const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem("token"));
+  // NAYA — Settings se on/off control
+  const [enabled, setEnabled] = useState(localStorage.getItem("campusAIEnabled") !== "false");
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
     { role: "assistant", text: "Hey! Main Campus AI hoon 🤖 Padhai, notes, ya app se related kuch bhi pooch sakte ho." },
@@ -27,19 +49,84 @@ export function AIAssistant() {
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef(null);
 
+  // NAYA — draggable button ki position (localStorage mein save hoti hai)
+  const [position, setPosition] = useState(() => {
+    try {
+      const saved = localStorage.getItem("campusAIPosition");
+      if (saved) return clampPosition(JSON.parse(saved));
+    } catch {
+      /* corrupt value ho to ignore */
+    }
+    return getDefaultPosition();
+  });
+  const dragRef = useRef({ dragging: false, moved: false, startX: 0, startY: 0, origX: 0, origY: 0 });
+
   useEffect(() => {
-    // NAYA — agar user login/logout karta hai to widget khud update ho jaye
+    // NAYA — login/logout aur Campus AI on/off dono ka turant sync
     const checkLogin = () => setIsLoggedIn(!!localStorage.getItem("token"));
+    const checkEnabled = () => setEnabled(localStorage.getItem("campusAIEnabled") !== "false");
     window.addEventListener("storage", checkLogin);
+    window.addEventListener("storage", checkEnabled);
+    window.addEventListener("campusai-toggle", checkEnabled); // Settings page (same tab) se aata hai
     checkLogin();
-    return () => window.removeEventListener("storage", checkLogin);
+    checkEnabled();
+    return () => {
+      window.removeEventListener("storage", checkLogin);
+      window.removeEventListener("storage", checkEnabled);
+      window.removeEventListener("campusai-toggle", checkEnabled);
+    };
   }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping, isOpen]);
 
-  if (!isLoggedIn) return null; // Login/Signup page pe widget nahi dikhega
+  // NAYA — screen rotate/resize hone par button viewport ke bahar na chala jaye
+  useEffect(() => {
+    const handleResize = () => setPosition((p) => clampPosition(p));
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // === NAYA: DRAG HANDLERS (mouse + touch dono ke liye pointer events use kiye) ===
+  const handlePointerDown = (e) => {
+    dragRef.current = {
+      dragging: true,
+      moved: false,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: position.x,
+      origY: position.y,
+    };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  const handlePointerMove = (e) => {
+    if (!dragRef.current.dragging) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) dragRef.current.moved = true;
+    if (!dragRef.current.moved) return;
+    setPosition(clampPosition({ x: dragRef.current.origX + dx, y: dragRef.current.origY + dy }));
+  };
+
+  const handlePointerUp = () => {
+    if (!dragRef.current.dragging) return;
+    dragRef.current.dragging = false;
+    if (dragRef.current.moved) {
+      // NAYA — drag khatam, naye position ko yaad rakho
+      setPosition((p) => {
+        const clamped = clampPosition(p);
+        localStorage.setItem("campusAIPosition", JSON.stringify(clamped));
+        return clamped;
+      });
+    } else {
+      // Bina hilaye tap kiya — normal open/close
+      setIsOpen((prev) => !prev);
+    }
+  };
+
+  if (!isLoggedIn || !enabled) return null; // Login/Signup pe ya Settings se off kiya ho to widget nahi dikhega
 
   const sendMessage = async (text) => {
     const trimmed = text.trim();
@@ -71,15 +158,26 @@ export function AIAssistant() {
     }
   };
 
+  // NAYA — chat panel ko button ke upar/paas hi khulwate hain, viewport ke andar clamp karke
+  const panelWidth = Math.min(384, window.innerWidth * 0.92);
+  const panelHeight = Math.min(560, window.innerHeight * 0.7);
+  const panelLeft = Math.min(
+    Math.max(8, position.x + BUTTON_SIZE - panelWidth),
+    window.innerWidth - panelWidth - 8
+  );
+  const panelTop = Math.max(8, position.y - panelHeight - 12);
+
   return (
     <>
-      {/* FLOATING BUTTON — chhota popup, har screen size pe dikhta hai.
-          Left sidebar ka "Campus AI" is se alag hai — wo poora page (/campus-ai) kholta hai. */}
+      {/* FLOATING BUTTON — ab draggable, finger/mouse dono se kahin bhi le ja sakte ho */}
       <button
-        onClick={() => setIsOpen((prev) => !prev)}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         aria-label="AI Assistant"
-        className="fixed bottom-6 right-5 z-50 w-14 h-14 rounded-full bg-cyan-600 hover:bg-cyan-500 shadow-lg shadow-cyan-900/50 flex items-center justify-center transition"
-        style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
+        className="fixed z-50 w-14 h-14 rounded-full bg-cyan-600 hover:bg-cyan-500 shadow-lg shadow-cyan-900/50 flex items-center justify-center transition-colors touch-none"
+        style={{ left: position.x, top: position.y }}
       >
         {isOpen ? <X size={24} className="text-white" /> : <Bot size={26} className="text-white" />}
       </button>
@@ -87,8 +185,8 @@ export function AIAssistant() {
       {/* CHAT PANEL */}
       {isOpen && (
         <div
-          className="fixed bottom-24 right-5 z-50 w-[92vw] max-w-sm h-[70vh] max-h-[560px] bg-[#111111] border border-gray-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-          style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
+          className="fixed z-50 bg-[#111111] border border-gray-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+          style={{ left: panelLeft, top: panelTop, width: panelWidth, height: panelHeight }}
         >
           {/* HEADER */}
           <div className="flex items-center gap-2 px-4 py-3 bg-[#0b0b0b] border-b border-gray-800">
