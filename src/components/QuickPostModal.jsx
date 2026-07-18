@@ -52,6 +52,13 @@ export const QuickPostModal = ({ type, onSubmit, onClose }) => {
   const cropImgRef = useRef(null);
   const dragRef = useRef({ dragging: false, startX: 0, startY: 0, origX: 0, origY: 0 });
 
+  // NAYA — in-app live camera state (OS ke file-picker pe depend nahi karta)
+  const [showCamera, setShowCamera] = useState(false);
+  const [cameraError, setCameraError] = useState("");
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const fallbackCameraInputRef = useRef(null);
+
   useEffect(() => {
     const fetchUsers = async () => {
       try {
@@ -60,6 +67,21 @@ export const QuickPostModal = ({ type, onSubmit, onClose }) => {
       } catch (err) { console.error(err); }
     };
     fetchUsers();
+  }, []);
+
+  // NAYA — camera stream ready hote hi video element se attach karo
+  useEffect(() => {
+    if (showCamera && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [showCamera]);
+
+  // component unmount pe camera band karna zaroori hai
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+    };
   }, []);
 
   // NAYA — gallery ya camera dono se yahi function call hota hai
@@ -71,6 +93,47 @@ export const QuickPostModal = ({ type, onSubmit, onClose }) => {
     reader.onloadend = () => setCropSrc(reader.result); // upload/click hote hi cropper khulega
     reader.readAsDataURL(file);
     e.target.value = ""; // same file dobara select karne de sake isliye reset
+  };
+
+  // NAYA — in-app live camera khologe (guaranteed camera, file-picker nahi)
+  const openCamera = async () => {
+    setCameraError("");
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      // purane browser jo getUserMedia support nahi karte, unke liye fallback
+      fallbackCameraInputRef.current?.click();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setShowCamera(true);
+    } catch (err) {
+      // permission block ya HTTPS na hone jaisi wajah se camera nahi khula — fallback try karo
+      console.error(err);
+      setCameraError("Camera access nahi mil paya. Permission check karo, ya neeche se try karo.");
+      fallbackCameraInputRef.current?.click();
+    }
+  };
+
+  const closeCamera = () => {
+    if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setShowCamera(false);
+  };
+
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+    closeCamera();
+    setCropSrc(dataUrl); // seedha crop screen mein chala jayega
   };
 
   const getBaseScale = () => {
@@ -214,15 +277,57 @@ export const QuickPostModal = ({ type, onSubmit, onClose }) => {
                 <Images size={26} strokeWidth={1.5} />
                 <span className="text-xs font-medium">Gallery se chuno</span>
               </label>
-              <label
+              <button
+                type="button"
+                onClick={openCamera}
                 className="cursor-pointer flex flex-col items-center justify-center gap-2 py-8 rounded-xl border-2 border-dashed transition"
                 style={{ borderColor: "var(--border-subtle)", color: "var(--text-muted)" }}
               >
-                {/* capture="environment" mobile pe seedha camera khol deta hai */}
-                <input type="file" accept="image/*" capture="environment" onChange={handleFileSelected} className="hidden" />
                 <Camera size={26} strokeWidth={1.5} />
                 <span className="text-xs font-medium">Camera se click karo</span>
-              </label>
+              </button>
+              {/* fallback — agar getUserMedia fail ho jaye to isse OS ka camera trigger hota hai */}
+              <input
+                ref={fallbackCameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileSelected}
+                className="hidden"
+              />
+            </div>
+          )}
+
+          {cameraError && (
+            <p className="text-xs mb-3 -mt-2" style={{ color: "#f87171" }}>{cameraError}</p>
+          )}
+
+          {/* NAYA — LIVE CAMERA VIEW: guaranteed camera, OS file-picker pe depend nahi */}
+          {showCamera && (
+            <div className="fixed inset-0 bg-black flex flex-col items-center justify-center z-[70] p-4">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="rounded-2xl max-h-[70vh] w-full object-cover"
+                style={{ maxWidth: 480 }}
+              />
+              <div className="flex items-center gap-6 mt-6">
+                <button
+                  onClick={closeCamera}
+                  className="px-5 py-2.5 rounded-xl font-semibold text-sm"
+                  style={{ background: "var(--surface-2)", color: "var(--text-main)" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={capturePhoto}
+                  className="w-16 h-16 rounded-full border-4 flex items-center justify-center"
+                  style={{ borderColor: "#fff", background: "var(--accent-1)" }}
+                  aria-label="Click photo"
+                />
+              </div>
             </div>
           )}
 
