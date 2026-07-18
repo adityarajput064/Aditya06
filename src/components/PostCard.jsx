@@ -77,7 +77,7 @@ export const PostCard = ({ post, currentUsername, onDelete, onLike, onSave, onSh
             </div>
           )}
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-semibold text-sm" style={{ color: "var(--text-main)" }}>{post.username}</h3>
               {badge && (
                 <span
@@ -85,6 +85,15 @@ export const PostCard = ({ post, currentUsername, onDelete, onLike, onSave, onSh
                   style={{ background: "color-mix(in srgb, var(--accent-1) 15%, transparent)", color: "var(--accent-1)" }}
                 >
                   <BadgeIcon size={11} strokeWidth={2} /> {badge.label}
+                </span>
+              )}
+              {/* NAYA — mood badge */}
+              {post.mood && (
+                <span
+                  className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                  style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
+                >
+                  {post.mood}
                 </span>
               )}
             </div>
@@ -105,8 +114,16 @@ export const PostCard = ({ post, currentUsername, onDelete, onLike, onSave, onSh
       </div>
 
       {post.content && (
-        <p className="text-sm mb-4 whitespace-pre-wrap leading-relaxed" style={{ color: "var(--text-main)" }}>{post.content}</p>
+        <p className="text-sm mb-1 whitespace-pre-wrap leading-relaxed" style={{ color: "var(--text-main)" }}>{post.content}</p>
       )}
+
+      {/* NAYA — tagged people */}
+      {post.tags && post.tags.length > 0 && (
+        <p className="text-xs mb-3" style={{ color: "var(--accent-1)" }}>
+          with {post.tags.map((t) => `@${t}`).join(", ")}
+        </p>
+      )}
+      {!(post.tags && post.tags.length > 0) && post.content && <div className="mb-3" />}
 
       {/* EVENT DATE */}
       {post.type === "event" && post.eventDate && (
@@ -133,7 +150,7 @@ export const PostCard = ({ post, currentUsername, onDelete, onLike, onSave, onSh
 
       {/* PDF/NOTES FILE */}
       {post.fileUrl && (
-        <a
+        
           href={post.fileUrl}
           download={post.fileName}
           className="flex items-center gap-3 mb-4 p-3 rounded-xl border transition"

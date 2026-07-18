@@ -274,6 +274,8 @@ const Post = mongoose.model('Post', new mongoose.Schema({
     fileUrl: String,            // "pdf"/"notes" type ke liye (base64 data URL)
     fileName: String,
     eventDate: String,          // "event" type ke liye
+    mood: { type: String, default: "" },        // NAYA — jaise "😊 Happy"
+    tags: [{ type: String }],                    // NAYA — tagged usernames (quick post feature)
     pollOptions: [{
         text: String,
         votes: [String]         // usernames jo isko vote kar chuke hain

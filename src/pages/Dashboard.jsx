@@ -10,6 +10,8 @@ import { TrendingSidebar } from "../components/TrendingSidebar";
 import { PostComposer } from "../components/PostComposer";
 import { PostCard } from "../components/PostCard";
 import { StudentsModal } from "../components/StudentsModal";
+import { QuickPostBar } from "../components/QuickPostBar";
+import { QuickPostModal } from "../components/QuickPostModal";
 import { subscribeToPush } from "../utils/pushNotifications";
 import {
   Building2,
@@ -76,6 +78,9 @@ export const Dashboard = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showStudentsModal, setShowStudentsModal] = useState(false);
 
+  // NAYA — Instagram-jaisa quick post (Photo / Meme)
+  const [quickPostType, setQuickPostType] = useState(null); // "image" | "meme" | null
+
   const [username, setUsername] = useState(localStorage.getItem("username") || "Guest");
   const [email, setEmail] = useState(localStorage.getItem("email") || "student@campus.edu");
   const [mobile, setMobile] = useState(localStorage.getItem("mobile") || "Not provided");
@@ -116,6 +121,18 @@ export const Dashboard = () => {
       fetchPosts();
       fetchStats();
     } catch (err) { alert("Server error! Post nahi hua."); }
+  };
+
+  // NAYA — quick post (Photo/Meme bar se) submit handler
+  const handleQuickPost = async (postData) => {
+    try {
+      await api.post("/api/posts", postData);
+      setQuickPostType(null);
+      fetchPosts();
+      fetchStats();
+    } catch (err) {
+      alert("Server error! Post nahi hua.");
+    }
   };
 
   const handleLike = async (id) => {
@@ -181,9 +198,6 @@ export const Dashboard = () => {
         try {
           setProfilePic(reader.result);
           localStorage.setItem("profilePic", reader.result);
-          // Ab backend/database mein bhi save karte hain, taaki naye posts pe
-          // aur dusre users ko bhi sahi profile photo dikhe (sirf apne browser
-          // ke localStorage mein hi na reh jaaye)
           await api.put(`/api/users/${username}`, { profilePic: reader.result });
         }
         catch (err) { alert("Photo save nahi ho payi, dobara try karo."); }
@@ -313,6 +327,9 @@ export const Dashboard = () => {
 
         {/* FEED */}
         <div className="flex-1 max-w-2xl mx-auto w-full pt-6 md:pt-8 px-4 pb-24 md:pb-8 z-10 overflow-y-auto">
+
+          {/* NAYA — Instagram-style quick post bar (Photo / Meme) */}
+          <QuickPostBar onSelect={setQuickPostType} />
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-6">
             <button onClick={() => setShowStudentsModal(true)} className="text-left min-w-0">
@@ -535,6 +552,15 @@ export const Dashboard = () => {
 
       {showModal && (
         <PostComposer onSubmit={handlePost} onClose={() => setShowModal(false)} />
+      )}
+
+      {/* NAYA — Instagram-style quick post modal (Photo/Meme) */}
+      {quickPostType && (
+        <QuickPostModal
+          type={quickPostType}
+          onSubmit={handleQuickPost}
+          onClose={() => setQuickPostType(null)}
+        />
       )}
 
       {showProfileModal && (
