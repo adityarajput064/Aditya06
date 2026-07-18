@@ -150,7 +150,7 @@ export const PostCard = ({ post, currentUsername, onDelete, onLike, onSave, onSh
 
       {/* PDF/NOTES FILE */}
       {post.fileUrl && (
-        
+        <a
           href={post.fileUrl}
           download={post.fileName}
           className="flex items-center gap-3 mb-4 p-3 rounded-xl border transition"
