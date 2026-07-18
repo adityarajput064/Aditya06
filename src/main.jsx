@@ -4,10 +4,13 @@ import App from './App.jsx'
 import './index.css'
 import './theme.css'
 import { registerServiceWorker } from './utils/registerServiceWorker'
+import { LanguageProvider } from './context/LanguageContext' // NAYA — language switcher ke liye
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <LanguageProvider>
+      <App />
+    </LanguageProvider>
   </React.StrictMode>,
 )
 

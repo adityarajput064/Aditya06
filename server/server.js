@@ -125,6 +125,11 @@ const UserSchema = new mongoose.Schema({
     skills: { type: String, default: "" },
     followers: [{ type: String }],   // jo isko follow karte hain (usernames)
     following: [{ type: String }],   // jinko ye follow karta hai (usernames)
+    // === NAYA: PRIVATE ACCOUNT + FOLLOW REQUESTS ===
+    isPrivate: { type: Boolean, default: false },      // true ho to follow ke liye request+approve chahiye
+    followRequests: [{ type: String }],                 // pending incoming follow requests (usernames)
+    // === NAYA: SETTINGS — preferred language ===
+    language: { type: String, default: "en" },          // e.g. "en", "hi", "gu", "mr"
     privacy: {
         showEmail: { type: Boolean, default: true },
         showMobile: { type: Boolean, default: false }
@@ -160,7 +165,7 @@ const Subscriber = mongoose.model('Subscriber', subscriberSchema);
 const NotificationSchema = new mongoose.Schema({
     toUsername: { type: String, required: true },     // kisko notification milegi
     fromUsername: { type: String, required: true },   // kisne trigger kiya
-    type: { type: String, enum: ['follow', 'like', 'comment', 'post'], required: true },
+    type: { type: String, enum: ['follow', 'like', 'comment', 'post', 'follow_request', 'follow_accept'], required: true },
     text: { type: String, required: true },            // display text
     postId: { type: mongoose.Schema.Types.ObjectId, ref: 'Post', default: null },
     read: { type: Boolean, default: false },
@@ -642,6 +647,16 @@ app.get('/api/users/:username', optionalAuth, async (req, res) => {
             return false;
         });
 
+        // === NAYA: PRIVATE ACCOUNT — viewer ka relationship status batao (profile card + follow button ke liye) ===
+        const isFollowing = viewer ? user.followers.includes(viewer) : false;
+        const hasRequested = viewer ? (user.followRequests || []).includes(viewer) : false;
+        userObj.relationship = isOwner ? 'owner' : isFollowing ? 'following' : hasRequested ? 'requested' : 'none';
+        userObj.followersCount = user.followers.length;
+        userObj.followingCount = user.following.length;
+        // private account + viewer follower nahi hai + owner nahi hai => posts/details lock rahenge
+        userObj.isLocked = !!(user.isPrivate && !isOwner && !isFollowing);
+        if (!isOwner) delete userObj.followRequests; // sirf owner ko apni pending requests list dikhe
+
         res.json(userObj);
     } catch (err) { res.status(500).json(err); }
 });
@@ -692,7 +707,7 @@ app.put('/api/users/:username', authMiddleware, async (req, res) => {
     } catch (err) { res.status(500).json(err); }
 });
 
-// === FOLLOW / UNFOLLOW TOGGLE (naya) ===
+// === FOLLOW / UNFOLLOW / FOLLOW-REQUEST (naya — private account support ke saath) ===
 app.put('/api/users/:username/follow', authMiddleware, async (req, res) => {
     try {
         const targetUsername = req.params.username;
@@ -706,38 +721,109 @@ app.put('/api/users/:username/follow', authMiddleware, async (req, res) => {
         const meUser = await User.findOne({ username: myUsername });
         if (!targetUser || !meUser) return res.status(404).json({ message: "User not found" });
 
-        const alreadyFollowing = targetUser.followers.includes(myUsername);
+        const isFollowing = targetUser.followers.includes(myUsername);
+        const hasRequested = (targetUser.followRequests || []).includes(myUsername);
 
-        if (alreadyFollowing) {
+        // Case 1: pehle se follow kar rahe hain -> unfollow
+        if (isFollowing) {
             targetUser.followers = targetUser.followers.filter((u) => u !== myUsername);
             meUser.following = meUser.following.filter((u) => u !== targetUsername);
-        } else {
-            targetUser.followers.push(myUsername);
-            meUser.following.push(targetUsername);
+            await targetUser.save();
+            await meUser.save();
+            return res.json({ status: 'none', followersCount: targetUser.followers.length });
         }
 
+        // Case 2: pending request pehle se bheji hui hai -> cancel karo
+        if (hasRequested) {
+            targetUser.followRequests = targetUser.followRequests.filter((u) => u !== myUsername);
+            await targetUser.save();
+            return res.json({ status: 'none', followersCount: targetUser.followers.length });
+        }
+
+        // Case 3: target private hai -> seedha follow nahi, request bhejo
+        if (targetUser.isPrivate) {
+            targetUser.followRequests = targetUser.followRequests || [];
+            targetUser.followRequests.push(myUsername);
+            await targetUser.save();
+            await notifyUser(targetUsername, myUsername, 'follow_request', `${myUsername} ne aapko follow karne ki request bheji`);
+            return res.json({ status: 'requested', followersCount: targetUser.followers.length });
+        }
+
+        // Case 4: public account -> turant follow
+        targetUser.followers.push(myUsername);
+        meUser.following.push(targetUsername);
         await targetUser.save();
         await meUser.save();
+        await notifyUser(targetUsername, myUsername, 'follow', `${myUsername} ne aapko follow kiya`);
+        res.json({ status: 'following', followersCount: targetUser.followers.length });
+    } catch (err) { res.status(500).json(err); }
+});
 
-        // NAYA — sirf naye follow pe notification (unfollow pe nahi)
-        if (!alreadyFollowing) {
-            await notifyUser(targetUsername, myUsername, 'follow', `${myUsername} ne aapko follow kiya`);
+// Pending follow requests ki list (sirf apni khud ki, Settings page ke liye)
+app.get('/api/follow-requests', authMiddleware, async (req, res) => {
+    try {
+        const me = await User.findOne({ username: req.user.username });
+        if (!me) return res.status(404).json({ message: "User not found" });
+        const requesters = await User.find({ username: { $in: me.followRequests || [] } })
+            .select("username profilePic department");
+        res.json(requesters);
+    } catch (err) { res.status(500).json(err); }
+});
+
+// Follow request accept karo
+app.put('/api/follow-requests/:requesterUsername/accept', authMiddleware, async (req, res) => {
+    try {
+        const me = await User.findOne({ username: req.user.username });
+        const requester = await User.findOne({ username: req.params.requesterUsername });
+        if (!me || !requester) return res.status(404).json({ message: "User not found" });
+        if (!(me.followRequests || []).includes(requester.username)) {
+            return res.status(400).json({ message: "Koi pending request nahi mili" });
         }
+        me.followRequests = me.followRequests.filter((u) => u !== requester.username);
+        me.followers.push(requester.username);
+        requester.following.push(me.username);
+        await me.save();
+        await requester.save();
+        await notifyUser(requester.username, me.username, 'follow_accept', `${me.username} ne aapki follow request accept kar li`);
+        res.json({ message: "Accepted", followersCount: me.followers.length });
+    } catch (err) { res.status(500).json(err); }
+});
 
-        res.json({
-            following: !alreadyFollowing,
-            followersCount: targetUser.followers.length
-        });
+// Follow request reject karo
+app.put('/api/follow-requests/:requesterUsername/reject', authMiddleware, async (req, res) => {
+    try {
+        const me = await User.findOne({ username: req.user.username });
+        if (!me) return res.status(404).json({ message: "User not found" });
+        me.followRequests = (me.followRequests || []).filter((u) => u !== req.params.requesterUsername);
+        await me.save();
+        res.json({ message: "Rejected" });
     } catch (err) { res.status(500).json(err); }
 });
 
 // === POST ROUTES (ab protected) ===
 // ?club=slug diya jaaye toh sirf usi club ke posts (ClubDetail page ke liye)
-app.get('/api/posts', async (req, res) => {
+// ?username=X diya jaaye toh sirf usi user ke posts (Profile page ke liye) — private account check ke saath
+app.get('/api/posts', optionalAuth, async (req, res) => {
     try {
         const filter = {};
         if (req.query.club) filter.club = req.query.club;
         if (req.query.type) filter.type = req.query.type; // NAYA — ?type=meme
+
+        if (req.query.username) {
+            const profileUser = await User.findOne({ username: req.query.username });
+            if (!profileUser) return res.json({ locked: false, posts: [] });
+            const viewer = req.user?.username || null;
+            const isOwner = viewer === profileUser.username;
+            const isFollower = viewer ? profileUser.followers.includes(viewer) : false;
+            if (profileUser.isPrivate && !isOwner && !isFollower) {
+                // private account, viewer follower nahi hai -> posts lock rahenge
+                return res.json({ locked: true, posts: [] });
+            }
+            filter.username = req.query.username;
+            const posts = await Post.find(filter).sort({ createdAt: -1 });
+            return res.json({ locked: false, posts });
+        }
+
         const posts = await Post.find(filter).sort({ createdAt: -1 });
         res.json(posts);
     }
@@ -992,7 +1078,7 @@ app.delete('/api/notices/:id', authMiddleware, async (req, res) => {
 app.get('/api/users', authMiddleware, async (req, res) => {
     try {
         const users = await User.find({ username: { $ne: req.user.username } })
-            .select("username profilePic department followers following");
+            .select("username profilePic department followers following isPrivate followRequests");
         const myUsername = req.user.username;
         const result = users.map((u) => ({
             username: u.username,
@@ -1000,7 +1086,9 @@ app.get('/api/users', authMiddleware, async (req, res) => {
             department: u.department,
             followersCount: u.followers.length,
             followingCount: u.following.length,
-            isFollowing: u.followers.includes(myUsername)
+            isPrivate: !!u.isPrivate,
+            isFollowing: u.followers.includes(myUsername),
+            hasRequested: (u.followRequests || []).includes(myUsername), // NAYA — private account ko request bheji hui hai?
         }));
         res.json(result);
     } catch (err) { res.status(500).json(err); }

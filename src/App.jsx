@@ -10,6 +10,8 @@ import { ClubDetail } from "./pages/ClubDetail";
 import { AboutApp } from "./pages/AboutApp";
 import { CampusAI } from "./pages/CampusAI";
 import { MemeCorner } from "./pages/MemeCorner";
+import { Settings } from "./pages/Settings";
+import { UserProfileView } from "./pages/UserProfileView";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AIAssistant } from "./components/AIAssistant";
 
@@ -31,6 +33,9 @@ function App() {
         <Route path="/club/:slug" element={<ProtectedRoute><ClubDetail /></ProtectedRoute>} />
         <Route path="/campus-ai" element={<ProtectedRoute><CampusAI /></ProtectedRoute>} />
         <Route path="/meme-corner" element={<ProtectedRoute><MemeCorner /></ProtectedRoute>} />
+        {/* NAYA — Settings page aur kisi bhi user ka full profile card dekhne ka route */}
+        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+        <Route path="/u/:username" element={<ProtectedRoute><UserProfileView /></ProtectedRoute>} />
       </Routes>
 
       {/* NAYA — poore app mein globally floating rehta hai, khud check karta hai login hai ya nahi */}

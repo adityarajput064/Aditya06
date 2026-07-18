@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { GlowCard } from "./GlowCard";
 import {
   HelpCircle,
@@ -37,6 +38,7 @@ const REACTIONS = ["👍", "❤️", "😂", "😮", "😢"];
 export const PostCard = ({ post, currentUsername, onDelete, onLike, onSave, onShare, onVote, onReply, onReact }) => {
   const [showComments, setShowComments] = useState(false);
   const [replyText, setReplyText] = useState("");
+  const navigate = useNavigate(); // NAYA — username/avatar click pe profile page pe le jaane ke liye
 
   const badge = TYPE_BADGES[post.type];
   const BadgeIcon = badge?.icon;
@@ -57,28 +59,38 @@ export const PostCard = ({ post, currentUsername, onDelete, onLike, onSave, onSh
 
       <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-3">
-          {post.profilePic ? (
-            <img
-              src={post.profilePic}
-              alt={post.username}
-              className="w-10 h-10 rounded-full object-cover"
-              style={{ border: "1px solid color-mix(in srgb, var(--accent-1) 35%, transparent)" }}
-            />
-          ) : (
-            <div
-              className="w-10 h-10 rounded-full flex items-center justify-center text-base font-semibold"
-              style={{
-                background: "color-mix(in srgb, var(--accent-1) 16%, transparent)",
-                color: "var(--accent-1)",
-                border: "1px solid color-mix(in srgb, var(--accent-1) 35%, transparent)",
-              }}
-            >
-              {post.username ? post.username[0].toUpperCase() : "?"}
-            </div>
-          )}
+          {/* NAYA — avatar click karke uss user ka profile khulega */}
+          <button onClick={() => navigate(`/u/${post.username}`)} className="shrink-0">
+            {post.profilePic ? (
+              <img
+                src={post.profilePic}
+                alt={post.username}
+                className="w-10 h-10 rounded-full object-cover"
+                style={{ border: "1px solid color-mix(in srgb, var(--accent-1) 35%, transparent)" }}
+              />
+            ) : (
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-base font-semibold"
+                style={{
+                  background: "color-mix(in srgb, var(--accent-1) 16%, transparent)",
+                  color: "var(--accent-1)",
+                  border: "1px solid color-mix(in srgb, var(--accent-1) 35%, transparent)",
+                }}
+              >
+                {post.username ? post.username[0].toUpperCase() : "?"}
+              </div>
+            )}
+          </button>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold text-sm" style={{ color: "var(--text-main)" }}>{post.username}</h3>
+              {/* NAYA — username click karke bhi profile khulega */}
+              <h3
+                className="font-semibold text-sm cursor-pointer hover:underline"
+                style={{ color: "var(--text-main)" }}
+                onClick={() => navigate(`/u/${post.username}`)}
+              >
+                {post.username}
+              </h3>
               {badge && (
                 <span
                   className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1"
