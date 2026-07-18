@@ -6,6 +6,7 @@ import {
   Pin,
   User,
   LogOut,
+  Settings,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -14,6 +15,7 @@ const NAV_ITEMS = [
   { label: "Study Materials", icon: BookOpen, path: "/study-materials" },
   { label: "Notice Board", icon: Pin, path: "/notice-board" },
   { label: "Profile", icon: User, path: "/profile" },
+  { label: "Settings", icon: Settings, path: "/settings" },
 ];
 
 export const Sidebar = () => {

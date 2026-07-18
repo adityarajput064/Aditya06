@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
-import { Search, MessageCircle, Bell, Moon, Sun, User, LogOut } from "lucide-react";
+import { Search, MessageCircle, Bell, Moon, Sun, User, LogOut, Settings } from "lucide-react";
 import api from "../utils/api";
 
 const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000");
@@ -157,6 +157,15 @@ export const Navbar = ({ username, profilePic }) => {
           )}
         </div>
 
+        {/* Settings */}
+        <button
+          onClick={() => navigate("/settings")}
+          className="w-10 h-10 rounded-xl flex items-center justify-center hover:bg-[var(--surface-2)] transition"
+          title="Settings"
+        >
+          <Settings size={18} strokeWidth={1.8} style={{ color: "var(--text-main)" }} />
+        </button>
+
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}
@@ -195,6 +204,12 @@ export const Navbar = ({ username, profilePic }) => {
                 className="w-full flex items-center gap-2.5 text-left px-4 py-3 text-sm hover:bg-[var(--surface-2)] transition"
               >
                 <User size={16} strokeWidth={1.8} /> View profile
+              </button>
+              <button
+                onClick={() => { setShowAvatarMenu(false); navigate("/settings"); }}
+                className="w-full flex items-center gap-2.5 text-left px-4 py-3 text-sm hover:bg-[var(--surface-2)] transition"
+              >
+                <Settings size={16} strokeWidth={1.8} /> Settings
               </button>
               <button
                 onClick={() => { localStorage.clear(); navigate("/login"); }}
