@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import api from "../utils/api";
 import { Navbar } from "../components/Navbar";
 import { AnimatedBackground } from "../components/AnimatedBackground";
 import { GlowCard } from "../components/GlowCard";
+import { SocialLinks } from "../components/SocialLinks";
 import {
   ArrowLeft,
   Pencil,
@@ -19,12 +20,16 @@ import {
 
 export const Profile = () => {
   const navigate = useNavigate();
-  const username = localStorage.getItem("username") || "Guest";
+  const { username: routeUsername } = useParams(); // NAYA — /profile/:username (optional) se kisi aur ki profile bhi khul sakti hai
+  const myUsername = localStorage.getItem("username") || "Guest";
+  const username = routeUsername || myUsername; // jiski profile dikhani hai
+  const isOwner = username === myUsername;       // NAYA — sirf owner hi edit kar sakta hai
 
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingLinks, setSavingLinks] = useState(false); // NAYA
 
   // Editable fields
   const [form, setForm] = useState({
@@ -39,7 +44,7 @@ export const Profile = () => {
   useEffect(() => {
     fetchProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [username]);
 
   const fetchProfile = async () => {
     setLoading(true);
@@ -108,6 +113,19 @@ export const Profile = () => {
     }
   };
 
+  // NAYA — social links backend mein save karo (sirf owner ke liye button dikhta hai)
+  const handleSaveSocialLinks = async (updatedLinks) => {
+    setSavingLinks(true);
+    try {
+      const res = await api.put(`/api/users/${username}/social-links`, { socialLinks: updatedLinks });
+      setProfile(res.data);
+    } catch (err) {
+      alert(err.response?.data?.message || "Social links save nahi hue.");
+    } finally {
+      setSavingLinks(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen relative flex items-center justify-center" style={{ background: "var(--bg-base)" }}>
@@ -170,7 +188,7 @@ export const Profile = () => {
               </div>
             </div>
 
-            {!editing ? (
+            {!isOwner ? null : !editing ? (
               <button
                 onClick={() => setEditing(true)}
                 className="flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg shrink-0 self-start"
@@ -221,6 +239,13 @@ export const Profile = () => {
               </p>
             )}
           </div>
+
+          {/* NAYA — SOCIAL LINKS */}
+          <SocialLinks
+            links={profile?.socialLinks || []}
+            isOwner={isOwner}
+            onChange={handleSaveSocialLinks}
+          />
 
           {/* Details grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

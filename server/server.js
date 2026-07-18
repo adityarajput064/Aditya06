@@ -39,6 +39,21 @@ const authMiddleware = (req, res, next) => {
     }
 };
 
+// === NAYA: OPTIONAL AUTH (token ho to decode karo, na ho to bhi block mat karo) ===
+// GET /api/users/:username jaisi public routes ke liye — taaki hum jaan sakein
+// "viewer kaun hai" (agar logged in hai) taaki social links visibility filter ho sake,
+// lekin logged-out/anonymous logon ko bhi profile dekhne se block na karein.
+const optionalAuth = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+        try {
+            const decoded = jwt.verify(authHeader.split(" ")[1], process.env.JWT_SECRET);
+            req.user = decoded; // { id, username }
+        } catch (err) { /* invalid/expired token — anonymous treat karo, error mat do */ }
+    }
+    next();
+};
+
 // === 🛑 NAYA WEB PUSH SETUP (VAPID Keys Configuration) ===
 webPush.setVapidDetails(
   process.env.VAPID_MAILTO,
@@ -113,7 +128,16 @@ const UserSchema = new mongoose.Schema({
     privacy: {
         showEmail: { type: Boolean, default: true },
         showMobile: { type: Boolean, default: false }
-    }
+    },
+    // === NAYA: SOCIAL LINKS (per-link visibility control) ===
+    socialLinks: [{
+        platform: { type: String, default: "website" },   // auto-detected key: instagram/facebook/...
+        label: { type: String, default: "Website" },        // display name
+        url: { type: String, required: true },
+        visibility: { type: String, enum: ['public', 'private', 'custom'], default: 'public' },
+        customMode: { type: String, enum: ['only', 'except'], default: 'only' }, // sirf 'custom' visibility ke liye
+        customUsers: [{ type: String }],                    // 'only' = inhi ko dikhao, 'except' = inse chhupao
+    }],
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -242,7 +266,7 @@ const Post = mongoose.model('Post', new mongoose.Schema({
     content: String,
     type: {
         type: String,
-        enum: ['general', 'image', 'pdf', 'notes', 'question', 'poll', 'lostfound', 'event', 'notice', 'meme'], // NAYA: 'meme' add kiya
+        enum: ['general', 'image', 'pdf', 'notes', 'question', 'poll', 'lostfound', 'event', 'notice', 'meme'],
         default: 'general'
     },
     club: { type: String, default: null }, // e.g. "esports-club" — group page filtering ke liye (optional)
@@ -256,7 +280,7 @@ const Post = mongoose.model('Post', new mongoose.Schema({
     }],
     likes: { type: Number, default: 0 },
     likedBy: [String],          // toggle ke liye (dobara like = unlike)
-    reactions: [{ username: String, emoji: String }], // NAYA — emoji reactions (like ke alawa)
+    reactions: [{ username: String, emoji: String }], // NAYA — emoji reactions
     savedBy: [String],          // bookmark/save karne wale users
     shareCount: { type: Number, default: 0 },
     comments: [{ username: String, text: String }]
@@ -594,10 +618,59 @@ app.post('/api/reset-password', async (req, res) => {
 
 
 // === PROFILE ROUTES (ab protected, JWT chahiye) ===
-app.get('/api/users/:username', async (req, res) => {
+app.get('/api/users/:username', optionalAuth, async (req, res) => {
     try {
         const user = await User.findOne({ username: req.params.username }).select("-password");
-        if (user) res.json(user); else res.status(404).json({ message: "Not found" });
+        if (!user) return res.status(404).json({ message: "Not found" });
+
+        const viewer = req.user?.username || null;
+        const isOwner = viewer === user.username;
+        const userObj = user.toObject();
+
+        // NAYA — social links ko viewer ke hisaab se filter karo (owner hamesha sab dekhta hai, editing ke liye)
+        userObj.socialLinks = (userObj.socialLinks || []).filter((link) => {
+            if (isOwner) return true;
+            if (link.visibility === 'public') return true;
+            if (link.visibility === 'private') return false;
+            if (link.visibility === 'custom') {
+                if (!viewer) return false; // anonymous logo ko custom links nahi dikhte
+                if (link.customMode === 'only') return link.customUsers?.includes(viewer);
+                if (link.customMode === 'except') return !link.customUsers?.includes(viewer);
+            }
+            return false;
+        });
+
+        res.json(userObj);
+    } catch (err) { res.status(500).json(err); }
+});
+
+// === NAYA: SOCIAL LINKS SAVE (sirf apni khud ki profile ke liye) ===
+app.put('/api/users/:username/social-links', authMiddleware, async (req, res) => {
+    try {
+        if (req.user.username !== req.params.username) {
+            return res.status(403).json({ message: "You can only edit your own social links" });
+        }
+        const { socialLinks } = req.body;
+        if (!Array.isArray(socialLinks)) {
+            return res.status(400).json({ message: "socialLinks array chahiye" });
+        }
+        // Basic sanitize — sirf allowed fields hi save karo
+        const cleaned = socialLinks.map((l) => ({
+            platform: l.platform || "website",
+            label: l.label || "Website",
+            url: l.url,
+            visibility: ['public', 'private', 'custom'].includes(l.visibility) ? l.visibility : 'public',
+            customMode: ['only', 'except'].includes(l.customMode) ? l.customMode : 'only',
+            customUsers: Array.isArray(l.customUsers) ? l.customUsers : [],
+        })).filter((l) => l.url && l.url.trim());
+
+        const updatedUser = await User.findOneAndUpdate(
+            { username: req.params.username },
+            { $set: { socialLinks: cleaned } },
+            { new: true }
+        ).select("-password");
+
+        res.json(updatedUser);
     } catch (err) { res.status(500).json(err); }
 });
 
@@ -662,7 +735,7 @@ app.get('/api/posts', async (req, res) => {
     try {
         const filter = {};
         if (req.query.club) filter.club = req.query.club;
-        if (req.query.type) filter.type = req.query.type; // NAYA — ?type=meme se sirf memes milenge
+        if (req.query.type) filter.type = req.query.type; // NAYA — ?type=meme
         const posts = await Post.find(filter).sort({ createdAt: -1 });
         res.json(posts);
     }
@@ -712,7 +785,7 @@ app.put('/api/posts/:id/like', authMiddleware, async (req, res) => {
     } catch (err) { res.status(500).json(err); }
 });
 
-// === NAYA: EMOJI REACTIONS (like ke alawa, ek user ek waqt mein ek hi reaction) ===
+// === NAYA: EMOJI REACTIONS ===
 const ALLOWED_REACTIONS = ["👍", "❤️", "😂", "😮", "😢"];
 
 app.put('/api/posts/:id/react', authMiddleware, async (req, res) => {
@@ -728,9 +801,9 @@ app.put('/api/posts/:id/react', authMiddleware, async (req, res) => {
         const existingIndex = post.reactions.findIndex((r) => r.username === username);
         const hadSameReaction = existingIndex !== -1 && post.reactions[existingIndex].emoji === emoji;
 
-        if (existingIndex !== -1) post.reactions.splice(existingIndex, 1); // purana reaction hata do
+        if (existingIndex !== -1) post.reactions.splice(existingIndex, 1);
         if (!hadSameReaction) {
-            post.reactions.push({ username, emoji }); // naya add karo (same emoji dobara dabaya = toggle off)
+            post.reactions.push({ username, emoji });
             if (post.username !== username) {
                 await notifyUser(post.username, username, 'like', `${username} ne aapki post pe ${emoji} react kiya`, post._id);
             }
@@ -741,7 +814,6 @@ app.put('/api/posts/:id/react', authMiddleware, async (req, res) => {
     } catch (err) { res.status(500).json(err); }
 });
 
-// === NAYA: MEME OF THE WEEK (pichle 7 din ke memes mein sabse zyada reactions+likes) ===
 app.get('/api/memes/of-the-week', async (req, res) => {
     try {
         const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -1036,7 +1108,6 @@ Hamesha friendly, concise aur helpful jawab do — Hinglish (Hindi + English mix
     }
 });
 
-// === NAYA: DAILY POLL — har din 9 AM (server time) khud-ba-khud ek fun poll post ho jaata hai ===
 const DAILY_POLL_QUESTIONS = [
     { content: "Aaj ka canteen ka best item kaunsa hai? 🍽️", options: ["Samosa", "Maggi", "Chai", "Vada Pav"] },
     { content: "Kaunsa department sabse zyada assignment deta hai? 😂", options: ["CSE", "Mechanical", "Electrical", "Civil"] },
@@ -1059,7 +1130,7 @@ async function postDailyPoll() {
     } catch (err) { console.error("Daily poll post failed:", err.message); }
 }
 
-cron.schedule('0 9 * * *', postDailyPoll); // '0 9 * * *' = roz subah 9:00 baje
+cron.schedule('0 9 * * *', postDailyPoll);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

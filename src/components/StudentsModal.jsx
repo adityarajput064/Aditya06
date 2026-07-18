@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { X, UserPlus, UserCheck } from "lucide-react";
 import api from "../utils/api";
 
 export const StudentsModal = ({ onClose }) => {
+  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -58,7 +60,10 @@ export const StudentsModal = ({ onClose }) => {
                 className="flex items-center justify-between gap-3 p-3 rounded-xl"
                 style={{ background: "var(--surface-2)", border: "1px solid var(--border-subtle)" }}
               >
-                <div className="flex items-center gap-3 min-w-0">
+                <button
+                  onClick={() => { onClose(); navigate(`/profile/${u.username}`); }}
+                  className="flex items-center gap-3 min-w-0 text-left"
+                >
                   <img
                     src={u.profilePic || `https://ui-avatars.com/api/?name=${u.username}&background=00E5FF&color=111`}
                     className="w-11 h-11 rounded-full object-cover shrink-0"
@@ -70,7 +75,7 @@ export const StudentsModal = ({ onClose }) => {
                       {u.department || "Department not set"} · {u.followersCount} followers
                     </p>
                   </div>
-                </div>
+                </button>
 
                 <button
                   onClick={() => toggleFollow(u.username)}

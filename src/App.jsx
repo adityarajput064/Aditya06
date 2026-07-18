@@ -25,6 +25,7 @@ function App() {
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+        <Route path="/profile/:username" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="/study-materials" element={<ProtectedRoute><StudyMaterials /></ProtectedRoute>} />
         <Route path="/notice-board" element={<ProtectedRoute><NoticeBoard /></ProtectedRoute>} />
         <Route path="/club/:slug" element={<ProtectedRoute><ClubDetail /></ProtectedRoute>} />
