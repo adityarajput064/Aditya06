@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { X, Smile, Users, Camera, Laugh } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { X, Smile, Users, Camera, Laugh, Images, Check, RotateCcw, ZoomIn } from "lucide-react";
 import api from "../utils/api";
 
 // === NAYA: Photo/Meme quick post — caption + image + mood + tag people ===
@@ -31,6 +31,10 @@ const MOODS = [
   { emoji: "❤️", label: "Grateful" },
 ];
 
+// NAYA — crop box (square) aur output resolution
+const CROP_BOX = 300;
+const CROP_OUTPUT = 900;
+
 export const QuickPostModal = ({ type, onSubmit, onClose }) => {
   const [caption, setCaption] = useState("");
   const [imagePreview, setImagePreview] = useState("");
@@ -39,6 +43,14 @@ export const QuickPostModal = ({ type, onSubmit, onClose }) => {
   const [users, setUsers] = useState([]);
   const [taggedUsers, setTaggedUsers] = useState([]);
   const [showTagPicker, setShowTagPicker] = useState(false);
+
+  // NAYA — cropper state
+  const [cropSrc, setCropSrc] = useState(""); // raw image jo crop hone wali hai
+  const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const cropImgRef = useRef(null);
+  const dragRef = useRef({ dragging: false, startX: 0, startY: 0, origX: 0, origY: 0 });
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -50,13 +62,82 @@ export const QuickPostModal = ({ type, onSubmit, onClose }) => {
     fetchUsers();
   }, []);
 
-  const handleImageChange = (e) => {
+  // NAYA — gallery ya camera dono se yahi function call hota hai
+  const handleFileSelected = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 5000000) { alert("File 5MB se badi hai!"); return; }
+    if (file.size > 8000000) { alert("File 8MB se badi hai!"); return; }
     const reader = new FileReader();
-    reader.onloadend = () => setImagePreview(reader.result);
+    reader.onloadend = () => setCropSrc(reader.result); // upload/click hote hi cropper khulega
     reader.readAsDataURL(file);
+    e.target.value = ""; // same file dobara select karne de sake isliye reset
+  };
+
+  const getBaseScale = () => {
+    if (!naturalSize.w || !naturalSize.h) return 1;
+    return Math.max(CROP_BOX / naturalSize.w, CROP_BOX / naturalSize.h);
+  };
+
+  const clampPos = (x, y, dispW, dispH) => {
+    const minX = Math.min(0, CROP_BOX - dispW);
+    const minY = Math.min(0, CROP_BOX - dispH);
+    return { x: Math.max(minX, Math.min(0, x)), y: Math.max(minY, Math.min(0, y)) };
+  };
+
+  const onCropImageLoad = (e) => {
+    const img = e.target;
+    const w = img.naturalWidth, h = img.naturalHeight;
+    setNaturalSize({ w, h });
+    const baseScale = Math.max(CROP_BOX / w, CROP_BOX / h);
+    const dispW = w * baseScale, dispH = h * baseScale;
+    setZoom(1);
+    setPos({ x: (CROP_BOX - dispW) / 2, y: (CROP_BOX - dispH) / 2 });
+  };
+
+  const handleZoomChange = (val) => {
+    const baseScale = getBaseScale();
+    const newScale = baseScale * val;
+    const dispW = naturalSize.w * newScale, dispH = naturalSize.h * newScale;
+    setZoom(val);
+    setPos((p) => clampPos(p.x, p.y, dispW, dispH));
+  };
+
+  const startDrag = (e) => {
+    const point = e.touches ? e.touches[0] : e;
+    dragRef.current = { dragging: true, startX: point.clientX, startY: point.clientY, origX: pos.x, origY: pos.y };
+  };
+
+  const onDrag = (e) => {
+    if (!dragRef.current.dragging) return;
+    const point = e.touches ? e.touches[0] : e;
+    const dx = point.clientX - dragRef.current.startX;
+    const dy = point.clientY - dragRef.current.startY;
+    const scale = getBaseScale() * zoom;
+    const dispW = naturalSize.w * scale, dispH = naturalSize.h * scale;
+    setPos(clampPos(dragRef.current.origX + dx, dragRef.current.origY + dy, dispW, dispH));
+  };
+
+  const endDrag = () => { dragRef.current.dragging = false; };
+
+  const handleCropCancel = () => { setCropSrc(""); };
+
+  const handleCropConfirm = () => {
+    const scale = getBaseScale() * zoom;
+    const sx = -pos.x / scale;
+    const sy = -pos.y / scale;
+    const sSize = CROP_BOX / scale;
+    const canvas = document.createElement("canvas");
+    canvas.width = CROP_OUTPUT;
+    canvas.height = CROP_OUTPUT;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(cropImgRef.current, sx, sy, sSize, sSize, 0, 0, CROP_OUTPUT, CROP_OUTPUT);
+    setImagePreview(canvas.toDataURL("image/jpeg", 0.92));
+    setCropSrc("");
+  };
+
+  const reopenCropper = () => {
+    // pehle se cropped image ko dobara crop karne ke liye
+    setCropSrc(imagePreview);
   };
 
   const toggleTag = (username) => {
@@ -113,16 +194,101 @@ export const QuickPostModal = ({ type, onSubmit, onClose }) => {
               >
                 <X size={16} />
               </button>
+              {/* NAYA — dobara crop karne ka option */}
+              <button
+                onClick={reopenCropper}
+                className="absolute bottom-2 right-2 flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full"
+                style={{ background: "rgba(0,0,0,0.6)", color: "#fff" }}
+              >
+                <RotateCcw size={13} /> Recrop
+              </button>
             </div>
           ) : (
-            <label
-              className="cursor-pointer flex flex-col items-center justify-center gap-2 py-10 rounded-xl border-2 border-dashed mb-4 transition"
-              style={{ borderColor: "var(--border-subtle)", color: "var(--text-muted)" }}
-            >
-              <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-              <TitleIcon size={28} strokeWidth={1.5} />
-              <span className="text-sm font-medium">Tap to upload {type === "meme" ? "meme" : "photo"}</span>
-            </label>
+            // NAYA — Gallery aur Camera, dono alag buttons
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <label
+                className="cursor-pointer flex flex-col items-center justify-center gap-2 py-8 rounded-xl border-2 border-dashed transition"
+                style={{ borderColor: "var(--border-subtle)", color: "var(--text-muted)" }}
+              >
+                <input type="file" accept="image/*" onChange={handleFileSelected} className="hidden" />
+                <Images size={26} strokeWidth={1.5} />
+                <span className="text-xs font-medium">Gallery se chuno</span>
+              </label>
+              <label
+                className="cursor-pointer flex flex-col items-center justify-center gap-2 py-8 rounded-xl border-2 border-dashed transition"
+                style={{ borderColor: "var(--border-subtle)", color: "var(--text-muted)" }}
+              >
+                {/* capture="environment" mobile pe seedha camera khol deta hai */}
+                <input type="file" accept="image/*" capture="environment" onChange={handleFileSelected} className="hidden" />
+                <Camera size={26} strokeWidth={1.5} />
+                <span className="text-xs font-medium">Camera se click karo</span>
+              </label>
+            </div>
+          )}
+
+          {/* NAYA — CROP OVERLAY: image select/click hote hi ye khulta hai */}
+          {cropSrc && (
+            <div className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-[70] p-4">
+              <p className="text-sm font-medium mb-3" style={{ color: "#fff" }}>Drag karke position set karo, zoom slider use karo</p>
+              <div
+                className="relative rounded-2xl overflow-hidden border-2"
+                style={{ width: CROP_BOX, height: CROP_BOX, borderColor: "var(--accent-1)", touchAction: "none", cursor: "grab" }}
+                onMouseDown={startDrag}
+                onMouseMove={onDrag}
+                onMouseUp={endDrag}
+                onMouseLeave={endDrag}
+                onTouchStart={startDrag}
+                onTouchMove={onDrag}
+                onTouchEnd={endDrag}
+              >
+                <img
+                  ref={cropImgRef}
+                  src={cropSrc}
+                  onLoad={onCropImageLoad}
+                  draggable={false}
+                  alt="Crop preview"
+                  style={{
+                    position: "absolute",
+                    left: pos.x,
+                    top: pos.y,
+                    width: naturalSize.w * getBaseScale() * zoom,
+                    height: naturalSize.h * getBaseScale() * zoom,
+                    userSelect: "none",
+                    pointerEvents: "none",
+                  }}
+                />
+              </div>
+
+              <div className="flex items-center gap-2 w-full max-w-xs mt-4">
+                <ZoomIn size={16} style={{ color: "#fff" }} />
+                <input
+                  type="range"
+                  min="1"
+                  max="3"
+                  step="0.01"
+                  value={zoom}
+                  onChange={(e) => handleZoomChange(Number(e.target.value))}
+                  className="w-full accent-cyan-500"
+                />
+              </div>
+
+              <div className="flex gap-3 mt-5">
+                <button
+                  onClick={handleCropCancel}
+                  className="px-5 py-2.5 rounded-xl font-semibold text-sm"
+                  style={{ background: "var(--surface-2)", color: "var(--text-main)" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCropConfirm}
+                  className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl font-semibold text-sm"
+                  style={{ background: "var(--accent-1)", color: "var(--bg-base)" }}
+                >
+                  <Check size={16} /> Use Photo
+                </button>
+              </div>
+            </div>
           )}
 
           <textarea
