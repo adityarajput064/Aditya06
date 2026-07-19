@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { io } from "socket.io-client";
 import { Smile } from "lucide-react";
 import api from "../utils/api";
@@ -19,8 +19,16 @@ const EMOJI_LIST = [
 export const Chat = () => {
   const navigate = useNavigate();
   const username = localStorage.getItem("username");
+  const [searchParams] = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState("group"); // "group" | "private"
+  const [activeTab, setActiveTab] = useState(searchParams.get("tab") === "private" ? "private" : "group"); // "group" | "private"
+
+  // NAYA — Dashboard se "Direct Message" button dabane par ?tab=private aata hai,
+  // isse turant Direct Messages tab khul jaye (chahe Chat page already khula ho)
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "private" || tab === "group") setActiveTab(tab);
+  }, [searchParams]);
 
   // --- Group chat state ---
   const [groupMsg, setGroupMsg] = useState("");
@@ -303,16 +311,16 @@ export const Chat = () => {
 
               <div className="mt-1 flex gap-2 relative" ref={groupEmojiRef}>
                 <input
-  className="w-full bg-gray-800 p-3 rounded-lg outline-none"
-  value={groupMsg}
-  onChange={handleGroupInputChange}
-  onKeyDown={(e) => e.key === "Enter" && sendGroupMessage()}
-  placeholder="Sabko message bhejo..."
-  autoComplete="off"
-  autoCorrect="off"
-  autoCapitalize="off"
-  spellCheck="false"
-/>
+                  className="w-full bg-gray-800 p-3 rounded-lg outline-none"
+                  value={groupMsg}
+                  onChange={handleGroupInputChange}
+                  onKeyDown={(e) => e.key === "Enter" && sendGroupMessage()}
+                  placeholder="Sabko message bhejo..."
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
+                />
                 <button
                   type="button"
                   onClick={() => setShowGroupEmoji((prev) => !prev)}
@@ -411,16 +419,16 @@ export const Chat = () => {
 
                   <div className="flex gap-2 p-3 bg-[#111111] rounded-b-2xl border border-gray-800 border-t-0 relative" ref={privateEmojiRef}>
                     <input
-  className="w-full bg-gray-800 p-3 rounded-lg outline-none"
-  value={privateMsg}
-  onChange={handlePrivateInputChange}
-  onKeyDown={(e) => e.key === "Enter" && sendPrivateMessage()}
-  placeholder={`${selectedUser.username} ko message bhejo...`}
-  autoComplete="off"
-  autoCorrect="off"
-  autoCapitalize="off"
-  spellCheck="false"
-/>
+                      className="w-full bg-gray-800 p-3 rounded-lg outline-none"
+                      value={privateMsg}
+                      onChange={handlePrivateInputChange}
+                      onKeyDown={(e) => e.key === "Enter" && sendPrivateMessage()}
+                      placeholder={`${selectedUser.username} ko message bhejo...`}
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck="false"
+                    />
                     <button
                       type="button"
                       onClick={() => setShowPrivateEmoji((prev) => !prev)}

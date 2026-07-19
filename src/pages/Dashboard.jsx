@@ -10,8 +10,6 @@ import { TrendingSidebar } from "../components/TrendingSidebar";
 import { PostComposer } from "../components/PostComposer";
 import { PostCard } from "../components/PostCard";
 import { StudentsModal } from "../components/StudentsModal";
-import { QuickPostBar } from "../components/QuickPostBar";
-import { QuickPostModal } from "../components/QuickPostModal";
 import { subscribeToPush } from "../utils/pushNotifications";
 import {
   Building2,
@@ -38,13 +36,15 @@ import {
   MapPinned,
   Info,
   Bot,
-  Laugh,
+  Send,
 } from "lucide-react";
 
 const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000");
 
+// NAYA — "Campus Feed" (jo bas top pe scroll karta tha) hata ke "Direct Message"
+// daala hai, jo seedha Chat page ke "Direct Messages" tab pe le jaata hai
 const NAV_ITEMS = [
-  { key: "feed", label: "Campus Feed", icon: Building2, path: null },
+  { key: "dm", label: "Direct Message", icon: Send, path: "/chat?tab=private" },
   { key: "chat", label: "Discussion Room", icon: MessageCircle, path: "/chat" },
   { key: "materials", label: "Study Materials", icon: BookOpen, path: "/study-materials" },
   { key: "notices", label: "Notice Board", icon: Pin, path: "/notice-board" },
@@ -77,9 +77,6 @@ export const Dashboard = () => {
   const [showModal, setShowModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showStudentsModal, setShowStudentsModal] = useState(false);
-
-  // NAYA — Instagram-jaisa quick post (Photo / Meme)
-  const [quickPostType, setQuickPostType] = useState(null); // "image" | "meme" | null
 
   const [username, setUsername] = useState(localStorage.getItem("username") || "Guest");
   const [email, setEmail] = useState(localStorage.getItem("email") || "student@campus.edu");
@@ -123,18 +120,6 @@ export const Dashboard = () => {
     } catch (err) { alert("Server error! Post nahi hua."); }
   };
 
-  // NAYA — quick post (Photo/Meme bar se) submit handler
-  const handleQuickPost = async (postData) => {
-    try {
-      await api.post("/api/posts", postData);
-      setQuickPostType(null);
-      fetchPosts();
-      fetchStats();
-    } catch (err) {
-      alert("Server error! Post nahi hua.");
-    }
-  };
-
   const handleLike = async (id) => {
     try {
       const res = await api.put(`/api/posts/${id}/like`);
@@ -173,14 +158,6 @@ export const Dashboard = () => {
     }
   };
 
-  // NAYA — emoji reaction toggle
-  const handleReact = async (id, emoji) => {
-    try {
-      const res = await api.put(`/api/posts/${id}/react`, { emoji });
-      setPosts((prev) => prev.map((p) => (p._id === id ? res.data : p)));
-    } catch (err) { alert("Reaction nahi ho paya."); }
-  };
-
   const handleReply = async (id, text) => {
     if (!text.trim()) return;
     try {
@@ -198,6 +175,9 @@ export const Dashboard = () => {
         try {
           setProfilePic(reader.result);
           localStorage.setItem("profilePic", reader.result);
+          // Ab backend/database mein bhi save karte hain, taaki naye posts pe
+          // aur dusre users ko bhi sahi profile photo dikhe (sirf apne browser
+          // ke localStorage mein hi na reh jaaye)
           await api.put(`/api/users/${username}`, { profilePic: reader.result });
         }
         catch (err) { alert("Photo save nahi ho payi, dobara try karo."); }
@@ -273,18 +253,6 @@ export const Dashboard = () => {
                 <span className="hidden md:block text-sm font-medium">Campus AI</span>
               </button>
 
-              {/* NAYA — Meme Corner */}
-              <button
-                onClick={() => navigate("/meme-corner")}
-                className="flex items-center gap-4 w-full p-3 rounded-xl transition"
-                style={{ color: "var(--text-muted)" }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              >
-                <Laugh size={19} strokeWidth={1.8} />
-                <span className="hidden md:block text-sm font-medium">Meme Corner</span>
-              </button>
-
               <button
                 onClick={() => setShowModal(true)}
                 className="flex items-center gap-4 w-full p-3 mt-3 rounded-xl border transition text-sm font-medium"
@@ -327,9 +295,6 @@ export const Dashboard = () => {
 
         {/* FEED */}
         <div className="flex-1 max-w-2xl mx-auto w-full pt-6 md:pt-8 px-4 pb-24 md:pb-8 z-10 overflow-y-auto">
-
-          {/* NAYA — Instagram-style quick post bar (Photo / Meme) */}
-          <QuickPostBar onSelect={setQuickPostType} />
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-6">
             <button onClick={() => setShowStudentsModal(true)} className="text-left min-w-0">
@@ -389,7 +354,6 @@ export const Dashboard = () => {
                 onShare={handleShare}
                 onVote={handleVote}
                 onReply={handleReply}
-                onReact={handleReact}
               />
             )) : (
               <div className="glow-card text-center mt-16 p-10">
@@ -552,15 +516,6 @@ export const Dashboard = () => {
 
       {showModal && (
         <PostComposer onSubmit={handlePost} onClose={() => setShowModal(false)} />
-      )}
-
-      {/* NAYA — Instagram-style quick post modal (Photo/Meme) */}
-      {quickPostType && (
-        <QuickPostModal
-          type={quickPostType}
-          onSubmit={handleQuickPost}
-          onClose={() => setQuickPostType(null)}
-        />
       )}
 
       {showProfileModal && (
