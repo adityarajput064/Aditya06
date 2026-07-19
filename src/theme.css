@@ -153,10 +153,13 @@ body {
 }
 
 /* ===== Skeleton loading shimmer ===== */
-.skeleton-shimmer {
+.glow-card {
   position: relative;
-  background: var(--surface-2);
-  overflow: hidden;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: 1rem;
+  transition: transform 0.15s ease-out, box-shadow 0.3s ease;
+  will-change: transform;
 }
 .skeleton-shimmer::after {
   content: "";

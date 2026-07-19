@@ -303,12 +303,16 @@ export const Chat = () => {
 
               <div className="mt-1 flex gap-2 relative" ref={groupEmojiRef}>
                 <input
-                  className="w-full bg-gray-800 p-3 rounded-lg outline-none"
-                  value={groupMsg}
-                  onChange={handleGroupInputChange}
-                  onKeyDown={(e) => e.key === "Enter" && sendGroupMessage()}
-                  placeholder="Sabko message bhejo..."
-                />
+  className="w-full bg-gray-800 p-3 rounded-lg outline-none"
+  value={groupMsg}
+  onChange={handleGroupInputChange}
+  onKeyDown={(e) => e.key === "Enter" && sendGroupMessage()}
+  placeholder="Sabko message bhejo..."
+  autoComplete="off"
+  autoCorrect="off"
+  autoCapitalize="off"
+  spellCheck="false"
+/>
                 <button
                   type="button"
                   onClick={() => setShowGroupEmoji((prev) => !prev)}
@@ -407,12 +411,16 @@ export const Chat = () => {
 
                   <div className="flex gap-2 p-3 bg-[#111111] rounded-b-2xl border border-gray-800 border-t-0 relative" ref={privateEmojiRef}>
                     <input
-                      className="w-full bg-gray-800 p-3 rounded-lg outline-none"
-                      value={privateMsg}
-                      onChange={handlePrivateInputChange}
-                      onKeyDown={(e) => e.key === "Enter" && sendPrivateMessage()}
-                      placeholder={`${selectedUser.username} ko message bhejo...`}
-                    />
+  className="w-full bg-gray-800 p-3 rounded-lg outline-none"
+  value={privateMsg}
+  onChange={handlePrivateInputChange}
+  onKeyDown={(e) => e.key === "Enter" && sendPrivateMessage()}
+  placeholder={`${selectedUser.username} ko message bhejo...`}
+  autoComplete="off"
+  autoCorrect="off"
+  autoCapitalize="off"
+  spellCheck="false"
+/>
                     <button
                       type="button"
                       onClick={() => setShowPrivateEmoji((prev) => !prev)}

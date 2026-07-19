@@ -125,8 +125,7 @@ export const Navbar = ({ username, profilePic }) => {
 
           {showNotifs && (
             <div
-              className="absolute right-0 mt-2 w-72 navbar-glass rounded-xl shadow-2xl overflow-hidden border max-h-96 overflow-y-auto"
-              style={{ borderColor: "var(--border-subtle)" }}
+              className="fixed left-4 right-4 top-16 sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-72 navbar-glass rounded-xl shadow-2xl overflow-hidden border max-h-96 overflow-y-auto z-50"
             >
               <div
                 className="px-4 py-3 font-semibold text-sm border-b sticky top-0"
