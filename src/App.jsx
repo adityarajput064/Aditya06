@@ -3,15 +3,13 @@ import { Login } from "./pages/Auth/Login";
 import { Signup } from "./pages/Auth/Signup";
 import { Dashboard } from "./pages/Dashboard";
 import { Chat } from "./pages/Chat";
+import { DirectMessages } from "./pages/DirectMessages";
 import { Profile } from "./pages/Profile";
 import { StudyMaterials } from "./pages/StudyMaterials";
 import { NoticeBoard } from "./pages/NoticeBoard";
 import { ClubDetail } from "./pages/ClubDetail";
 import { AboutApp } from "./pages/AboutApp";
 import { CampusAI } from "./pages/CampusAI";
-import { MemeCorner } from "./pages/MemeCorner";
-import { Settings } from "./pages/Settings";
-import { UserProfileView } from "./pages/UserProfileView";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AIAssistant } from "./components/AIAssistant";
 
@@ -26,16 +24,13 @@ function App() {
 
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+        {/* NAYA — standalone Direct Messages page, mobile-friendly, sirf 1-on-1 chat */}
+        <Route path="/messages" element={<ProtectedRoute><DirectMessages /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-        <Route path="/profile/:username" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="/study-materials" element={<ProtectedRoute><StudyMaterials /></ProtectedRoute>} />
         <Route path="/notice-board" element={<ProtectedRoute><NoticeBoard /></ProtectedRoute>} />
         <Route path="/club/:slug" element={<ProtectedRoute><ClubDetail /></ProtectedRoute>} />
         <Route path="/campus-ai" element={<ProtectedRoute><CampusAI /></ProtectedRoute>} />
-        <Route path="/meme-corner" element={<ProtectedRoute><MemeCorner /></ProtectedRoute>} />
-        {/* NAYA — Settings page aur kisi bhi user ka full profile card dekhne ka route */}
-        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-        <Route path="/u/:username" element={<ProtectedRoute><UserProfileView /></ProtectedRoute>} />
       </Routes>
 
       {/* NAYA — poore app mein globally floating rehta hai, khud check karta hai login hai ya nahi */}

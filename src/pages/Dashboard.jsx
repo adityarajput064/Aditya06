@@ -42,9 +42,10 @@ import {
 const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000");
 
 // NAYA — "Campus Feed" (jo bas top pe scroll karta tha) hata ke "Direct Message"
-// daala hai, jo seedha Chat page ke "Direct Messages" tab pe le jaata hai
+// daala hai, jo standalone /messages page pe le jaata hai (mobile-friendly,
+// alag page hai taaki Group Discussion tab ke saath squeeze na ho)
 const NAV_ITEMS = [
-  { key: "dm", label: "Direct Message", icon: Send, path: "/chat?tab=private" },
+  { key: "dm", label: "Direct Message", icon: Send, path: "/messages" },
   { key: "chat", label: "Discussion Room", icon: MessageCircle, path: "/chat" },
   { key: "materials", label: "Study Materials", icon: BookOpen, path: "/study-materials" },
   { key: "notices", label: "Notice Board", icon: Pin, path: "/notice-board" },
