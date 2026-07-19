@@ -40,9 +40,6 @@ const authMiddleware = (req, res, next) => {
 };
 
 // === NAYA: OPTIONAL AUTH (token ho to decode karo, na ho to bhi block mat karo) ===
-// GET /api/users/:username jaisi public routes ke liye — taaki hum jaan sakein
-// "viewer kaun hai" (agar logged in hai) taaki social links visibility filter ho sake,
-// lekin logged-out/anonymous logon ko bhi profile dekhne se block na karein.
 const optionalAuth = (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -61,7 +58,6 @@ webPush.setVapidDetails(
   process.env.VAPID_PRIVATE_KEY
 );
 
-// Frontend ko Public Key dene ke liye API endpoint
 app.get('/api/vapid-public-key', (req, res) => {
   res.send(process.env.VAPID_PUBLIC_KEY);
 });
@@ -75,10 +71,6 @@ cloudinary.config({
 });
 
 // === 🛑 UPDATED: EMAIL BHEJNE KA HELPER — EmailJS (free, no domain/DNS zaroori nahi) ===
-// EmailJS ke dashboard mein Gmail service connect karo aur ek template banao jisme
-// {{to_email}}, {{otp}}, aur {{purpose}} variables ho.
-// Render Environment mein ye 4 set karne honge:
-// EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, EMAILJS_PRIVATE_KEY
 const sendEmail = async (to, otp, purpose) => {
     const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
         method: 'POST',
@@ -87,7 +79,7 @@ const sendEmail = async (to, otp, purpose) => {
             service_id: process.env.EMAILJS_SERVICE_ID,
             template_id: process.env.EMAILJS_TEMPLATE_ID,
             user_id: process.env.EMAILJS_PUBLIC_KEY,
-            accessToken: process.env.EMAILJS_PRIVATE_KEY, // server (non-browser) se call karne ke liye zaroori hai
+            accessToken: process.env.EMAILJS_PRIVATE_KEY,
             template_params: {
                 email: to,
                 otp,
@@ -124,32 +116,27 @@ const UserSchema = new mongoose.Schema({
     institute: { type: String, default: "" },
     enrollmentNumber: { type: String, default: "" },
     skills: { type: String, default: "" },
-    followers: [{ type: String }],   // jo isko follow karte hain (usernames)
-    following: [{ type: String }],   // jinko ye follow karta hai (usernames)
-    // === NAYA: PRIVATE ACCOUNT + FOLLOW REQUESTS ===
-    isPrivate: { type: Boolean, default: false },      // true ho to follow ke liye request+approve chahiye
-    followRequests: [{ type: String }],                 // pending incoming follow requests (usernames)
-    // === NAYA: SETTINGS — preferred language ===
-    language: { type: String, default: "en" },          // e.g. "en", "hi", "gu", "mr"
+    followers: [{ type: String }],
+    following: [{ type: String }],
+    isPrivate: { type: Boolean, default: false },
+    followRequests: [{ type: String }],
+    language: { type: String, default: "en" },
     privacy: {
         showEmail: { type: Boolean, default: true },
         showMobile: { type: Boolean, default: false }
     },
-    // === NAYA: SOCIAL LINKS (per-link visibility control) ===
     socialLinks: [{
-        platform: { type: String, default: "website" },   // auto-detected key: instagram/facebook/...
-        label: { type: String, default: "Website" },        // display name
+        platform: { type: String, default: "website" },
+        label: { type: String, default: "Website" },
         url: { type: String, required: true },
         visibility: { type: String, enum: ['public', 'private', 'custom'], default: 'public' },
-        customMode: { type: String, enum: ['only', 'except'], default: 'only' }, // sirf 'custom' visibility ke liye
-        customUsers: [{ type: String }],                    // 'only' = inhi ko dikhao, 'except' = inse chhupao
+        customMode: { type: String, enum: ['only', 'except'], default: 'only' },
+        customUsers: [{ type: String }],
     }],
 });
 const User = mongoose.model('User', UserSchema);
 
 // === 🛑 NAYA SUBSCRIBER SCHEMA (Push Notifications ke liye) ===
-// NAYA: ab har subscription ek username se bhi linked hai, taaki
-// push sirf uss specific user ko bheji ja sake (broadcast nahi)
 const subscriberSchema = new mongoose.Schema({
   username: { type: String, required: true },
   endpoint: { type: String, required: true, unique: true },
@@ -163,11 +150,12 @@ const Subscriber = mongoose.model('Subscriber', subscriberSchema);
 // ===============================================================
 
 // === 🛑 NAYA NOTIFICATION SCHEMA (in-app bell + push history ke liye) ===
+// NAYA — 'message' type add kiya gaya hai (private chat messages ke notification ke liye)
 const NotificationSchema = new mongoose.Schema({
-    toUsername: { type: String, required: true },     // kisko notification milegi
-    fromUsername: { type: String, required: true },   // kisne trigger kiya
-    type: { type: String, enum: ['follow', 'like', 'comment', 'post', 'follow_request', 'follow_accept'], required: true },
-    text: { type: String, required: true },            // display text
+    toUsername: { type: String, required: true },
+    fromUsername: { type: String, required: true },
+    type: { type: String, enum: ['follow', 'like', 'comment', 'post', 'follow_request', 'follow_accept', 'message'], required: true },
+    text: { type: String, required: true },
     postId: { type: mongoose.Schema.Types.ObjectId, ref: 'Post', default: null },
     read: { type: Boolean, default: false },
 }, { timestamps: true });
@@ -175,7 +163,6 @@ const Notification = mongoose.model('Notification', NotificationSchema);
 // ===============================================================
 
 // === 🛑 NAYA: OTP SCHEMA (email login ke liye) ===
-// 5 minute (300 sec) baad khud expire ho jata hai — TTL index
 const OtpSchema = new mongoose.Schema({
     email: { type: String, required: true },
     otp: { type: String, required: true },
@@ -186,10 +173,7 @@ const Otp = mongoose.model('Otp', OtpSchema);
 
 
 // === 🛑 NAYA SUBSCRIBE ROUTE & NOTICE HELPER FUNCTION ===
-// Iske thik niche se tere baaki ke routes shuru honge
 
-// Frontend se push subscription save karne ka route
-// NAYA: ab authMiddleware lagi hai, taaki username subscription se linked ho sake
 app.post('/api/subscribe', authMiddleware, async (req, res) => {
   try {
     await Subscriber.findOneAndUpdate(
@@ -204,7 +188,6 @@ app.post('/api/subscribe', authMiddleware, async (req, res) => {
   }
 });
 
-// Admin/System se sabko notice bhejne ka helper function (jaisa tha waisa hi rakha hai)
 async function sendNoticeToAll(title, message, url) {
   const allSubscribers = await Subscriber.find({});
   const payload = JSON.stringify({
@@ -251,8 +234,6 @@ async function sendPushToUser(username, text) {
 }
 
 // === 🛑 NAYA: NOTIFICATION BANANE + BHEJNE KA MAIN HELPER ===
-// DB mein save karta hai, real-time socket se bell icon update karta hai,
-// aur phone pe push bhi bhejta hai — teeno ek hi jagah se
 async function notifyUser(toUsername, fromUsername, type, text, postId = null) {
   if (toUsername === fromUsername) return; // khud ko notification nahi
   try {
@@ -263,46 +244,41 @@ async function notifyUser(toUsername, fromUsername, type, text, postId = null) {
 }
 // ===============================================================
 
-// 👇 YAHAN SE NICHE TERE PEHLE WALE BAAKI KE ROUTES AUR CODE AYENGE
-// (jaise app.post('/login', ...), app.get('/posts', ...), server.listen(...) wgairah)
-
 const Post = mongoose.model('Post', new mongoose.Schema({
     username: String,
-    profilePic: { type: String, default: "" }, // NAYA — post banane waale user ki profile photo
+    profilePic: { type: String, default: "" },
     content: String,
     type: {
         type: String,
         enum: ['general', 'image', 'pdf', 'notes', 'question', 'poll', 'lostfound', 'event', 'notice', 'meme'],
         default: 'general'
     },
-    club: { type: String, default: null }, // e.g. "esports-club" — group page filtering ke liye (optional)
-    imageUrl: String,           // "image" type ke liye
-    fileUrl: String,            // "pdf"/"notes" type ke liye (base64 data URL)
+    club: { type: String, default: null },
+    imageUrl: String,
+    fileUrl: String,
     fileName: String,
-    eventDate: String,          // "event" type ke liye
-    mood: { type: String, default: "" },        // NAYA — jaise "😊 Happy"
-    tags: [{ type: String }],                    // NAYA — tagged usernames (quick post feature)
+    eventDate: String,
+    mood: { type: String, default: "" },
+    tags: [{ type: String }],
     pollOptions: [{
         text: String,
-        votes: [String]         // usernames jo isko vote kar chuke hain
+        votes: [String]
     }],
     likes: { type: Number, default: 0 },
-    likedBy: [String],          // toggle ke liye (dobara like = unlike)
-    reactions: [{ username: String, emoji: String }], // NAYA — emoji reactions
-    savedBy: [String],          // bookmark/save karne wale users
+    likedBy: [String],
+    reactions: [{ username: String, emoji: String }],
+    savedBy: [String],
     shareCount: { type: Number, default: 0 },
     comments: [{ username: String, text: String }]
 }, { timestamps: true }));
 
 // === STUDY MATERIALS (naya) ===
-// Posts se alag rakha hai jaan-boojh kar: materials real files hote hain (ab
-// Cloudinary par store), feed posts (base64 fileUrl) se alag concern hai.
 const MaterialSchema = new mongoose.Schema({
     title: { type: String, required: true },
     department: { type: String, default: "General" },
-    fileUrl: { type: String, required: true },   // ab Cloudinary ka secure_url
+    fileUrl: { type: String, required: true },
     fileName: String,
-    uploadedBy: String,   // server route se set hota hai (JWT se), client se trust nahi karte
+    uploadedBy: String,
 }, { timestamps: true });
 const Material = mongoose.model('Material', MaterialSchema);
 
@@ -311,14 +287,11 @@ const NoticeSchema = new mongoose.Schema({
     title: { type: String, required: true },
     content: { type: String, required: true },
     department: { type: String, default: "Admin Office" },
-    postedBy: String,   // server route se set hota hai (JWT se)
+    postedBy: String,
 }, { timestamps: true });
 const Notice = mongoose.model('Notice', NoticeSchema);
 
 // GROUP CHAT: 30 second baad MongoDB khud document delete kar dega (TTL index).
-// Note: MongoDB ka TTL background job ~60 sec mein ek baar chalta hai, isliye
-// database se delete hone mein 30-90 sec lag sakta hai. Frontend alag se
-// exact 30 sec pe message UI se hata dega, isliye user ko exact 30 sec hi dikhega.
 const GroupMessageSchema = new mongoose.Schema({
     username: String,
     text: String,
@@ -331,33 +304,27 @@ const PrivateMessageSchema = new mongoose.Schema({
     from: String,
     to: String,
     text: String,
-    createdAt: { type: Date, default: Date.now, expires: 21600 } // 6 hours = 6 * 60 * 60
+    createdAt: { type: Date, default: Date.now, expires: 21600 }
 });
 const PrivateMessage = mongoose.model('PrivateMessage', PrivateMessageSchema);
 
-// Do usernames se hamesha same, consistent "room id" banane ke liye
-// (taaki A->B aur B->A dono same room mein milein)
 const getPrivateRoomId = (userA, userB) => [userA, userB].sort().join("__");
 
 // === MULTER + CLOUDINARY (study material file uploads) ===
-// Disk storage ki jagah ab seedha Cloudinary par upload hota hai.
 const uploadStorage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: {
         folder: 'campus-connect-materials',
-        resource_type: 'auto', // images, PDFs, docs — sab handle karega
-        // Original filename (extension ke bina) ko public_id mein rakhte hain
-        // taaki Cloudinary URL thoda readable rahe
+        resource_type: 'auto',
         public_id: (req, file) => `${Date.now()}-${path.parse(file.originalname).name.replace(/\s+/g, '_')}`,
     },
 });
 const upload = multer({
     storage: uploadStorage,
-    limits: { fileSize: 20 * 1024 * 1024 } // 20MB cap
+    limits: { fileSize: 20 * 1024 * 1024 }
 });
 
 // === 🛑 NAYA: ONLINE USERS TRACKING (Discussion Room ke liye) ===
-// username -> Set of socket ids (ek user multiple tabs/devices se connected ho sakta hai)
 const onlineUsers = new Map();
 
 function broadcastOnlineUsers() {
@@ -367,21 +334,17 @@ function broadcastOnlineUsers() {
 io.on('connection', (socket) => {
     socket.on('send-reply', (data) => { io.emit('receive-notification', data); });
 
-    // === 🛑 NAYA: HAR USER APNE PERSONAL ROOM MEIN JOIN HOTA HAI ===
-    // Isse notifyUser() sirf usi user ko real-time notification bhej payega
     socket.on('register-user', (username) => {
         if (username) {
             socket.join(username);
-            socket.data.username = username; // NAYA — disconnect pe cleanup ke liye yaad rakhte hain
+            socket.data.username = username;
 
-            // NAYA — online users list mein add karo aur sabko naya list bhej do
             if (!onlineUsers.has(username)) onlineUsers.set(username, new Set());
             onlineUsers.get(username).add(socket.id);
             broadcastOnlineUsers();
         }
     });
 
-    // === 🛑 NAYA: GROUP CHAT TYPING INDICATOR ===
     socket.on('group-typing-start', (typingUsername) => {
         socket.broadcast.emit('group-typing-start', typingUsername);
     });
@@ -389,8 +352,6 @@ io.on('connection', (socket) => {
         socket.broadcast.emit('group-typing-stop', typingUsername);
     });
 
-    // === 🛑 NAYA: PRIVATE CHAT TYPING INDICATOR ===
-    // Sirf dusre user ke room mein bhejte hain, taaki sirf wahi dekhe
     socket.on('private-typing-start', ({ from, to }) => {
         const roomId = getPrivateRoomId(from, to);
         socket.to(roomId).emit('private-typing-start', { from });
@@ -401,6 +362,7 @@ io.on('connection', (socket) => {
     });
 
     // === GROUP CHAT (Discuss Room) ===
+    // NAYA — group message pe bhi sabko (sender ke alawa) notification jaati hai
     socket.on('send-group-msg', async (data) => {
         try {
             const saved = await new GroupMessage({ username: data.username, text: data.text }).save();
@@ -410,16 +372,23 @@ io.on('connection', (socket) => {
                 text: saved.text,
                 createdAt: saved.createdAt
             });
+
+            // NAYA — abhi online sabhi users ko (khud ko chhodke) message notification
+            onlineUsers.forEach((_, uname) => {
+                if (uname !== data.username) {
+                    notifyUser(uname, data.username, 'message', `${data.username} (Group): ${data.text}`);
+                }
+            });
         } catch (err) { console.error("Group message save failed:", err.message); }
     });
 
     // === PRIVATE CHAT (1-on-1) ===
-    // Dono users ko is common room mein join karwate hain taaki messages sirf unke beech rahein
     socket.on('join-private-room', ({ myUsername, otherUsername }) => {
         const roomId = getPrivateRoomId(myUsername, otherUsername);
         socket.join(roomId);
     });
 
+    // NAYA — private message bhejte hi receiver ko notification (bell + push) jaati hai
     socket.on('send-private-msg', async ({ from, to, text }) => {
         try {
             const saved = await new PrivateMessage({ from, to, text }).save();
@@ -431,15 +400,16 @@ io.on('connection', (socket) => {
                 text: saved.text,
                 createdAt: saved.createdAt
             });
+
+            // NAYA — yahi missing tha: ab har private message pe notifyUser() chalega
+            await notifyUser(to, from, 'message', `${from}: ${text}`);
         } catch (err) { console.error("Private message save failed:", err.message); }
     });
 
-    // === 🛑 NAYA: DISCONNECT PE ONLINE USERS SE HATA DO ===
     socket.on('disconnect', () => {
         const disconnectedUsername = socket.data.username;
         if (disconnectedUsername && onlineUsers.has(disconnectedUsername)) {
             onlineUsers.get(disconnectedUsername).delete(socket.id);
-            // Sirf tab remove karo jab uska koi aur tab/device connected na ho
             if (onlineUsers.get(disconnectedUsername).size === 0) {
                 onlineUsers.delete(disconnectedUsername);
             }
@@ -449,7 +419,6 @@ io.on('connection', (socket) => {
 });
 
 // === 🛑 NAYA: DISPOSABLE / TEMP EMAIL BLOCKLIST ===
-// Ye sab known temp-mail services hain — inse signup allow nahi karte
 const DISPOSABLE_EMAIL_DOMAINS = new Set([
     "mailinator.com", "tempmail.com", "temp-mail.org", "10minutemail.com",
     "guerrillamail.com", "guerrillamail.info", "yopmail.com", "throwawaymail.com",
@@ -463,13 +432,11 @@ const DISPOSABLE_EMAIL_DOMAINS = new Set([
 
 function isDisposableEmail(email) {
     const domain = email.split("@")[1]?.toLowerCase();
-    return domain ? DISPOSABLE_EMAIL_DOMAINS.has(domain) : true; // domain hi na mile to bhi block
+    return domain ? DISPOSABLE_EMAIL_DOMAINS.has(domain) : true;
 }
 
 // === AUTH ROUTES ===
 
-// === 🛑 NAYA: SIGNUP EMAIL VERIFICATION (OTP) ===
-// Step 1 — signup form submit karne se pehle email pe OTP bhejo
 app.post('/api/otp/send-signup', async (req, res) => {
     try {
         const { email } = req.body;
@@ -484,9 +451,9 @@ app.post('/api/otp/send-signup', async (req, res) => {
             return res.status(400).json({ message: "Is email se pehle se account bana hua hai" });
         }
 
-        const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-        await Otp.deleteMany({ email }); // purana OTP hata ke naya save karo
+        await Otp.deleteMany({ email });
         await new Otp({ email, otp }).save();
 
         await sendEmail(email, otp, "verify your email for signup");
@@ -498,7 +465,6 @@ app.post('/api/otp/send-signup', async (req, res) => {
     }
 });
 
-// Step 2 — OTP + baaki details ek saath bhejo, tabhi account banega
 app.post('/api/signup', async (req, res) => {
     try {
         const { username, email, mobile, password, otp } = req.body;
@@ -523,7 +489,7 @@ app.post('/api/signup', async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         const newUser = new User({ username, email, mobile, password: hashedPassword });
         await newUser.save();
-        await Otp.deleteMany({ email }); // use ho gaya, ab hata do
+        await Otp.deleteMany({ email });
 
         res.json({ message: "Signup Success" });
     } catch (err) {
@@ -545,7 +511,6 @@ app.post('/api/login', async (req, res) => {
 
         const token = jwt.sign({ id: user._id, username: user.username }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-        // Poori profile info bhi bhej rahe hain taaki frontend localStorage mein sab save kar sake
         res.json({
             token,
             username: user.username,
@@ -563,17 +528,12 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// === 🛑 NAYA: FORGOT PASSWORD (OTP-based reset) ===
-// Step 1 — email daalo, agar account exist karta hai to OTP bhejo
-// (signup wale OTP se ulta — yahan user ka pehle se hona zaroori hai)
 app.post('/api/otp/send-reset', async (req, res) => {
     try {
         const { email } = req.body;
         if (!email) return res.status(400).json({ message: "Email zaroori hai" });
 
         const user = await User.findOne({ email });
-        // NOTE: jaanbujh kar "user nahi mila" wala alag error nahi de rahe —
-        // isse koi ye pata nahi laga sakta ki konsi email registered hai ya nahi.
         if (!user) {
             return res.json({ message: "Agar ye email registered hai, to OTP bhej diya gaya hai" });
         }
@@ -592,7 +552,6 @@ app.post('/api/otp/send-reset', async (req, res) => {
     }
 });
 
-// Step 2 — OTP + naya password bhejo, verify ho ke password update ho jayega
 app.post('/api/reset-password', async (req, res) => {
     try {
         const { email, otp, newPassword } = req.body;
@@ -615,7 +574,7 @@ app.post('/api/reset-password', async (req, res) => {
 
         user.password = await bcrypt.hash(newPassword, 10);
         await user.save();
-        await Otp.deleteMany({ email }); // use ho gaya, ab hata do
+        await Otp.deleteMany({ email });
 
         res.json({ message: "Password reset ho gaya, ab naye password se login karo" });
     } catch (err) {
@@ -635,34 +594,30 @@ app.get('/api/users/:username', optionalAuth, async (req, res) => {
         const isOwner = viewer === user.username;
         const userObj = user.toObject();
 
-        // NAYA — social links ko viewer ke hisaab se filter karo (owner hamesha sab dekhta hai, editing ke liye)
         userObj.socialLinks = (userObj.socialLinks || []).filter((link) => {
             if (isOwner) return true;
             if (link.visibility === 'public') return true;
             if (link.visibility === 'private') return false;
             if (link.visibility === 'custom') {
-                if (!viewer) return false; // anonymous logo ko custom links nahi dikhte
+                if (!viewer) return false;
                 if (link.customMode === 'only') return link.customUsers?.includes(viewer);
                 if (link.customMode === 'except') return !link.customUsers?.includes(viewer);
             }
             return false;
         });
 
-        // === NAYA: PRIVATE ACCOUNT — viewer ka relationship status batao (profile card + follow button ke liye) ===
         const isFollowing = viewer ? user.followers.includes(viewer) : false;
         const hasRequested = viewer ? (user.followRequests || []).includes(viewer) : false;
         userObj.relationship = isOwner ? 'owner' : isFollowing ? 'following' : hasRequested ? 'requested' : 'none';
         userObj.followersCount = user.followers.length;
         userObj.followingCount = user.following.length;
-        // private account + viewer follower nahi hai + owner nahi hai => posts/details lock rahenge
         userObj.isLocked = !!(user.isPrivate && !isOwner && !isFollowing);
-        if (!isOwner) delete userObj.followRequests; // sirf owner ko apni pending requests list dikhe
+        if (!isOwner) delete userObj.followRequests;
 
         res.json(userObj);
     } catch (err) { res.status(500).json(err); }
 });
 
-// === NAYA: SOCIAL LINKS SAVE (sirf apni khud ki profile ke liye) ===
 app.put('/api/users/:username/social-links', authMiddleware, async (req, res) => {
     try {
         if (req.user.username !== req.params.username) {
@@ -672,7 +627,6 @@ app.put('/api/users/:username/social-links', authMiddleware, async (req, res) =>
         if (!Array.isArray(socialLinks)) {
             return res.status(400).json({ message: "socialLinks array chahiye" });
         }
-        // Basic sanitize — sirf allowed fields hi save karo
         const cleaned = socialLinks.map((l) => ({
             platform: l.platform || "website",
             label: l.label || "Website",
@@ -694,13 +648,11 @@ app.put('/api/users/:username/social-links', authMiddleware, async (req, res) =>
 
 app.put('/api/users/:username', authMiddleware, async (req, res) => {
     try {
-        // User sirf apni hi profile edit kar sakta hai, kisi aur ki nahi
         if (req.user.username !== req.params.username) {
             return res.status(403).json({ message: "You can only edit your own profile" });
         }
-        const { password, ...safeUpdates } = req.body; // password yahan se update nahi hoga
+        const { password, ...safeUpdates } = req.body;
 
-        // Agar naya username diya gaya hai aur wo kisi aur ka nahi hai, to hi check/update karo
         if (safeUpdates.username && safeUpdates.username !== req.params.username) {
             const clash = await User.findOne({ username: safeUpdates.username });
             if (clash) {
@@ -718,7 +670,6 @@ app.put('/api/users/:username', authMiddleware, async (req, res) => {
 
         const responseObj = updatedUser.toObject();
 
-        // Username badla ho to naya token bhejo, warna purane token se aage ke requests 403 denge
         if (safeUpdates.username && safeUpdates.username !== req.params.username) {
             responseObj.newToken = jwt.sign(
                 { id: updatedUser._id, username: updatedUser.username },
@@ -748,7 +699,6 @@ app.put('/api/users/:username/follow', authMiddleware, async (req, res) => {
         const isFollowing = targetUser.followers.includes(myUsername);
         const hasRequested = (targetUser.followRequests || []).includes(myUsername);
 
-        // Case 1: pehle se follow kar rahe hain -> unfollow
         if (isFollowing) {
             targetUser.followers = targetUser.followers.filter((u) => u !== myUsername);
             meUser.following = meUser.following.filter((u) => u !== targetUsername);
@@ -757,14 +707,12 @@ app.put('/api/users/:username/follow', authMiddleware, async (req, res) => {
             return res.json({ status: 'none', followersCount: targetUser.followers.length });
         }
 
-        // Case 2: pending request pehle se bheji hui hai -> cancel karo
         if (hasRequested) {
             targetUser.followRequests = targetUser.followRequests.filter((u) => u !== myUsername);
             await targetUser.save();
             return res.json({ status: 'none', followersCount: targetUser.followers.length });
         }
 
-        // Case 3: target private hai -> seedha follow nahi, request bhejo
         if (targetUser.isPrivate) {
             targetUser.followRequests = targetUser.followRequests || [];
             targetUser.followRequests.push(myUsername);
@@ -773,7 +721,6 @@ app.put('/api/users/:username/follow', authMiddleware, async (req, res) => {
             return res.json({ status: 'requested', followersCount: targetUser.followers.length });
         }
 
-        // Case 4: public account -> turant follow
         targetUser.followers.push(myUsername);
         meUser.following.push(targetUsername);
         await targetUser.save();
@@ -783,7 +730,6 @@ app.put('/api/users/:username/follow', authMiddleware, async (req, res) => {
     } catch (err) { res.status(500).json(err); }
 });
 
-// Pending follow requests ki list (sirf apni khud ki, Settings page ke liye)
 app.get('/api/follow-requests', authMiddleware, async (req, res) => {
     try {
         const me = await User.findOne({ username: req.user.username });
@@ -794,7 +740,6 @@ app.get('/api/follow-requests', authMiddleware, async (req, res) => {
     } catch (err) { res.status(500).json(err); }
 });
 
-// Follow request accept karo
 app.put('/api/follow-requests/:requesterUsername/accept', authMiddleware, async (req, res) => {
     try {
         const me = await User.findOne({ username: req.user.username });
@@ -813,7 +758,6 @@ app.put('/api/follow-requests/:requesterUsername/accept', authMiddleware, async 
     } catch (err) { res.status(500).json(err); }
 });
 
-// Follow request reject karo
 app.put('/api/follow-requests/:requesterUsername/reject', authMiddleware, async (req, res) => {
     try {
         const me = await User.findOne({ username: req.user.username });
@@ -825,13 +769,11 @@ app.put('/api/follow-requests/:requesterUsername/reject', authMiddleware, async 
 });
 
 // === POST ROUTES (ab protected) ===
-// ?club=slug diya jaaye toh sirf usi club ke posts (ClubDetail page ke liye)
-// ?username=X diya jaaye toh sirf usi user ke posts (Profile page ke liye) — private account check ke saath
 app.get('/api/posts', optionalAuth, async (req, res) => {
     try {
         const filter = {};
         if (req.query.club) filter.club = req.query.club;
-        if (req.query.type) filter.type = req.query.type; // NAYA — ?type=meme
+        if (req.query.type) filter.type = req.query.type;
 
         if (req.query.username) {
             const profileUser = await User.findOne({ username: req.query.username });
@@ -840,7 +782,6 @@ app.get('/api/posts', optionalAuth, async (req, res) => {
             const isOwner = viewer === profileUser.username;
             const isFollower = viewer ? profileUser.followers.includes(viewer) : false;
             if (profileUser.isPrivate && !isOwner && !isFollower) {
-                // private account, viewer follower nahi hai -> posts lock rahenge
                 return res.json({ locked: true, posts: [] });
             }
             filter.username = req.query.username;
@@ -856,13 +797,10 @@ app.get('/api/posts', optionalAuth, async (req, res) => {
 
 app.post('/api/posts', authMiddleware, async (req, res) => {
     try {
-        // Post ke saath current profilePic bhi save karte hain, taaki feed mein
-        // sahi (latest) profile photo dikhe, sirf letter wala default avatar nahi
         const user = await User.findOne({ username: req.user.username });
         const newPost = new Post({ ...req.body, username: req.user.username, profilePic: user?.profilePic || "" });
         await newPost.save();
 
-        // NAYA — apne saare followers ko notify karo ki naya post aaya hai
         if (user?.followers?.length) {
             user.followers.forEach((followerUsername) => {
                 notifyUser(followerUsername, req.user.username, 'post', `${req.user.username} ne naya post kiya`, newPost._id);
@@ -888,7 +826,6 @@ app.put('/api/posts/:id/like', authMiddleware, async (req, res) => {
         }
         await post.save();
 
-        // NAYA — sirf naye like pe notification (unlike pe nahi)
         if (!alreadyLiked) {
             await notifyUser(post.username, username, 'like', `${username} ne aapki post like ki`, post._id);
         }
@@ -966,7 +903,6 @@ app.put('/api/posts/:id/share', authMiddleware, async (req, res) => {
     } catch (err) { res.status(500).json(err); }
 });
 
-// Poll par vote karna - ek user sirf ek hi option pe vote kar sakta hai (revote allowed, replace hoga)
 app.put('/api/posts/:id/vote', authMiddleware, async (req, res) => {
     try {
         const post = await Post.findById(req.params.id);
@@ -974,11 +910,9 @@ app.put('/api/posts/:id/vote', authMiddleware, async (req, res) => {
         const { optionIndex } = req.body;
         const username = req.user.username;
 
-        // Pehle is user ka vote sabhi options se hata do (agar tha to)
         post.pollOptions.forEach((opt) => {
             opt.votes = opt.votes.filter((u) => u !== username);
         });
-        // Fir naye option mein add karo
         if (post.pollOptions[optionIndex]) {
             post.pollOptions[optionIndex].votes.push(username);
         }
@@ -994,7 +928,6 @@ app.post('/api/posts/:id/reply', authMiddleware, async (req, res) => {
         await post.save();
         io.emit('send-reply', { text: "Naya reply aaya hai!" });
 
-        // NAYA — post owner ko comment ki notification
         await notifyUser(post.username, req.user.username, 'comment', `${req.user.username} ne aapki post pe comment kiya`, post._id);
 
         res.json(post);
@@ -1005,7 +938,6 @@ app.delete('/api/posts/:id', authMiddleware, async (req, res) => {
     try {
         const post = await Post.findById(req.params.id);
         if (!post) return res.status(404).json({ message: "Post not found" });
-        // Sirf apna post delete kar sakta hai
         if (post.username !== req.user.username) {
             return res.status(403).json({ message: "You can only delete your own posts" });
         }
@@ -1023,9 +955,6 @@ app.get('/api/materials', async (req, res) => {
 });
 
 app.post('/api/materials', authMiddleware, (req, res, next) => {
-    // NAYA: multer/Cloudinary upload ko manually wrap kiya hai taaki uska error bhi
-    // pakad sakein (normally ye middleware ka error try/catch ke bahar hota hai
-    // isliye pehle generic [object Object] / silent 500 aa raha tha)
     upload.single('file')(req, res, (err) => {
         if (err) {
             console.error("Upload middleware error:", err);
@@ -1039,9 +968,9 @@ app.post('/api/materials', authMiddleware, (req, res, next) => {
         const newMaterial = new Material({
             title: req.body.title,
             department: req.body.department,
-            fileUrl: req.file.path, // Cloudinary ka secure_url yahan aata hai
+            fileUrl: req.file.path,
             fileName: req.file.originalname,
-            uploadedBy: req.user.username, // client se aaya value ignore, JWT se trusted username
+            uploadedBy: req.user.username,
         });
         await newMaterial.save();
         res.json(newMaterial);
@@ -1077,7 +1006,7 @@ app.post('/api/notices', authMiddleware, async (req, res) => {
             title: req.body.title,
             content: req.body.content,
             department: req.body.department,
-            postedBy: req.user.username, // client se aaya value ignore, JWT se trusted username
+            postedBy: req.user.username,
         });
         await newNotice.save();
         res.json(newNotice);
@@ -1098,7 +1027,6 @@ app.delete('/api/notices/:id', authMiddleware, async (req, res) => {
 
 // === CHAT ROUTES ===
 
-// Sab users ki list (private chat + Students modal ke liye, apna naam chhodke)
 app.get('/api/users', authMiddleware, async (req, res) => {
     try {
         const users = await User.find({ username: { $ne: req.user.username } })
@@ -1112,13 +1040,12 @@ app.get('/api/users', authMiddleware, async (req, res) => {
             followingCount: u.following.length,
             isPrivate: !!u.isPrivate,
             isFollowing: u.followers.includes(myUsername),
-            hasRequested: (u.followRequests || []).includes(myUsername), // NAYA — private account ko request bheji hui hai?
+            hasRequested: (u.followRequests || []).includes(myUsername),
         }));
         res.json(result);
     } catch (err) { res.status(500).json(err); }
 });
 
-// Group chat ke abhi tak zinda (30 sec se purane nahi) messages
 app.get('/api/messages/group', authMiddleware, async (req, res) => {
     try {
         const messages = await GroupMessage.find().sort({ createdAt: 1 });
@@ -1126,7 +1053,6 @@ app.get('/api/messages/group', authMiddleware, async (req, res) => {
     } catch (err) { res.status(500).json(err); }
 });
 
-// Kisi ek user ke saath private conversation history
 app.get('/api/messages/private/:otherUsername', authMiddleware, async (req, res) => {
     try {
         const roomId = getPrivateRoomId(req.user.username, req.params.otherUsername);
@@ -1174,7 +1100,6 @@ app.get('/api/stats', authMiddleware, async (req, res) => {
 });
 
 // === 🛑 NAYA: AI ASSISTANT (Google Gemini — free tier se connected) ===
-// Node 18+ mein fetch built-in hai, isliye koi extra npm package nahi lagi.
 app.post('/api/ai/chat', authMiddleware, async (req, res) => {
     try {
         const { message } = req.body;
@@ -1198,13 +1123,11 @@ Hamesha friendly, concise aur helpful jawab do — Hinglish (Hindi + English mix
             }
         );
 
-        // === 🛑 NAYA: Retry logic — Gemini kabhi-kabhi "high demand" (503) dikhata hai,
-        // jo temporary hota hai. 2 baar automatic retry karte hain user ko error dikhane se pehle.
         let response = await callGemini();
         let data = await response.json();
 
         for (let attempt = 0; !response.ok && response.status === 503 && attempt < 2; attempt++) {
-            await new Promise((r) => setTimeout(r, 1000 * (attempt + 1))); // 1s, phir 2s wait
+            await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
             response = await callGemini();
             data = await response.json();
         }
